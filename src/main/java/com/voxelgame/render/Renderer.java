@@ -5,6 +5,8 @@ import com.voxelgame.world.ChunkPos;
 import com.voxelgame.world.World;
 import org.joml.Matrix4f;
 
+import static org.lwjgl.opengl.GL33.*;
+
 /**
  * Main rendering coordinator. Binds shader, sets uniforms,
  * renders visible chunk meshes with frustum culling.

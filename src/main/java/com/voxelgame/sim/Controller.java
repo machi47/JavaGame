@@ -208,8 +208,8 @@ public class Controller {
     // ---- Mode toggles ----
 
     private void handleModeToggles() {
-        // F4 = toggle fly mode (F3 = debug overlay, handled in GameLoop)
-        if (Input.isKeyPressed(GLFW_KEY_F4)) {
+        // F = toggle fly mode (F3 = debug overlay, handled in GameLoop)
+        if (Input.isKeyPressed(GLFW_KEY_F)) {
             player.toggleFlyMode();
             System.out.println("Fly mode: " + (player.isFlyMode() ? "ON" : "OFF"));
         }
