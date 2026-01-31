@@ -19,7 +19,8 @@ import java.util.List;
 public class NaiveMesher implements Mesher {
 
     // Face indices: 0=top(+Y), 1=bottom(-Y), 2=north(-Z), 3=south(+Z), 4=east(+X), 5=west(-X)
-    private static final float[] FACE_LIGHT = {1.0f, 0.6f, 0.8f, 0.8f, 0.85f, 0.75f};
+    // Wider spread between faces gives stronger directional depth cues
+    private static final float[] FACE_LIGHT = {1.0f, 0.45f, 0.7f, 0.7f, 0.8f, 0.6f};
 
     // Direction offsets for neighbor checking [dx, dy, dz]
     private static final int[][] FACE_NORMALS = {
@@ -31,8 +32,9 @@ public class NaiveMesher implements Mesher {
         {-1,  0,  0}, // west
     };
 
-    // AO levels: 0 occluders = 1.0, 1 = 0.75, 2 = 0.5, 3 = 0.35
-    private static final float[] AO_LEVELS = {1.0f, 0.75f, 0.5f, 0.35f};
+    // AO levels: 0 occluders = 1.0, 1 = 0.55, 2 = 0.3, 3 = 0.15
+    // Aggressive curve gives visible depth at block edges and corners
+    private static final float[] AO_LEVELS = {1.0f, 0.55f, 0.3f, 0.15f};
 
     /**
      * For each face, the 4 vertices and their 3 AO neighbor offsets.
