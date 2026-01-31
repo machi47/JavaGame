@@ -1,0 +1,13 @@
+{
+  "renderDistance": 8,
+  "fov": 70.0,
+  "flyMode": false,
+  "windowWidth": 1280,
+  "windowHeight": 720,
+  "vsync": true,
+  "maxFps": 120,
+  "mouseSensitivity": 0.1,
+  "worldgenPreset": "infdev_like_v1",
+  "debugOverlay": false,
+  "fullscreen": false
+}

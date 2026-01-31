@@ -1,0 +1,34 @@
+{
+  "name": "weirdness_v1",
+  "ticksPerEvolveUpdate": 200,
+  "imprintDecayRate": 0.001,
+  "corruptionGrowthRate": 0.005,
+  "stabilityRadius": 5,
+  "tiers": {
+    "whispers": {
+      "corruptionThreshold": 0.1,
+      "fogIntensity": 0.2,
+      "whisperChance": 0.005
+    },
+    "anomalies": {
+      "corruptionThreshold": 0.3,
+      "fogIntensity": 0.5,
+      "cloudDistortion": 0.3,
+      "lightFlicker": true
+    },
+    "structures": {
+      "corruptionThreshold": 0.6,
+      "structureChance": 0.01,
+      "growthTickInterval": 100,
+      "maxActiveStructures": 3
+    },
+    "transformed": {
+      "corruptionThreshold": 0.85,
+      "blockReplacementRate": 0.02,
+      "ambientParticles": true
+    }
+  },
+  "maxCorruption": 1.0,
+  "playerImprintPerTick": 0.01,
+  "imprintFalloffExponent": 2.0
+}

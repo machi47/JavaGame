@@ -1,0 +1,88 @@
+{
+  "name": "infdev_like_v1",
+  "seaLevel": 64,
+  "baseHeight": 48,
+  "islandMask": {
+    "freq": 0.0008,
+    "threshold": 0.15,
+    "falloffCurve": 2.0
+  },
+  "elevation": {
+    "freqLow": 0.002,
+    "freqMid": 0.008,
+    "freqHigh": 0.03,
+    "amplitude": 80
+  },
+  "ridge": {
+    "enable": true,
+    "freq": 0.005,
+    "strength": 40,
+    "sharpness": 2.0
+  },
+  "mountainMask": {
+    "freq": 0.001,
+    "threshold": 0.4
+  },
+  "scaleNoise": {
+    "freq": 0.004,
+    "strength": 0.3
+  },
+  "domainWarp": {
+    "freq": 0.003,
+    "strength": 30.0
+  },
+  "beaches": {
+    "bandHalfWidth": 4,
+    "sandNoise": {
+      "freq": 0.05,
+      "threshold": 0.3
+    },
+    "gravelNoise": {
+      "freq": 0.07,
+      "threshold": 0.5
+    }
+  },
+  "caves": {
+    "wormsPerChunkMin": 0,
+    "wormsPerChunkMax": 2,
+    "wormLength": 80,
+    "radiusMin": 1.5,
+    "radiusMax": 4.0,
+    "verticalBias": 0.7
+  },
+  "ores": {
+    "coal": {
+      "attempts": 20,
+      "veinSize": 12,
+      "minY": 0,
+      "maxY": 128
+    },
+    "iron": {
+      "attempts": 15,
+      "veinSize": 8,
+      "minY": 0,
+      "maxY": 64
+    },
+    "gold": {
+      "attempts": 4,
+      "veinSize": 6,
+      "minY": 0,
+      "maxY": 32
+    },
+    "diamond": {
+      "attempts": 2,
+      "veinSize": 4,
+      "minY": 0,
+      "maxY": 16
+    }
+  },
+  "trees": {
+    "densityNoiseFreq": 0.01,
+    "densityThreshold": 0.2,
+    "attemptsPerChunk": 4
+  },
+  "spawn": {
+    "sandPreferenceRadius": 256,
+    "maxAttempts": 1000
+  }
+}
