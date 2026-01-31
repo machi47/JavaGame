@@ -43,12 +43,15 @@ public class Window {
             this.resized = true;
         });
 
-        // Center window
-        GLFWVidMode vidMode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-        if (vidMode != null) {
-            glfwSetWindowPos(handle,
-                (vidMode.width() - width) / 2,
-                (vidMode.height() - height) / 2);
+        // Center window (monitor can be null in some launch contexts)
+        long monitor = glfwGetPrimaryMonitor();
+        if (monitor != NULL) {
+            GLFWVidMode vidMode = glfwGetVideoMode(monitor);
+            if (vidMode != null) {
+                glfwSetWindowPos(handle,
+                    (vidMode.width() - width) / 2,
+                    (vidMode.height() - height) / 2);
+            }
         }
 
         glfwMakeContextCurrent(handle);
