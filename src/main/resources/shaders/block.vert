@@ -12,5 +12,6 @@ out float vLight;
 void main() {
     gl_Position = uProjection * uView * vec4(aPos, 1.0);
     vTexCoord = aTexCoord;
+    // Pass light through — interpolation across the triangle gives smooth vertex lighting
     vLight = aLight;
 }
