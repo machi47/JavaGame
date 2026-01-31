@@ -49,7 +49,7 @@ public class DebugOverlay {
     /**
      * Render debug text overlay.
      */
-    public void render(Player player, World world, int fps, int screenW, int screenH) {
+    public void render(Player player, World world, int fps, int screenW, int screenH, boolean sprinting) {
         if (!visible) return;
 
         glDisable(GL_DEPTH_TEST);
@@ -67,12 +67,18 @@ public class DebugOverlay {
         String facing = getFacingDirection(yaw);
 
         // Build debug lines
+        // Compute feet position for display
+        float feetY = pos.y - Player.EYE_HEIGHT;
+
         String[] lines = {
             String.format("FPS: %d", fps),
-            String.format("Pos: %.1f / %.1f / %.1f", pos.x, pos.y, pos.z),
+            String.format("Pos: %.1f / %.1f / %.1f  (feet: %.1f)", pos.x, pos.y, pos.z, feetY),
             String.format("Chunk: %d, %d", cx, cz),
             String.format("Loaded chunks: %d", loadedChunks),
-            String.format("Fly: %s", player.isFlyMode() ? "ON" : "OFF"),
+            String.format("Fly: %s  Ground: %s  Sprint: %s",
+                player.isFlyMode() ? "ON" : "OFF",
+                player.isOnGround() ? "YES" : "NO",
+                sprinting ? "YES" : "NO"),
             String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
         };
 

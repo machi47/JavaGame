@@ -107,7 +107,7 @@ public class GameLoop {
             int w = window.getWidth();
             int h = window.getHeight();
             hud.render(w, h);
-            debugOverlay.render(player, world, time.getFps(), w, h);
+            debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting());
 
             // ---- End frame ----
             Input.endFrame();

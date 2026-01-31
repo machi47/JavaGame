@@ -8,18 +8,38 @@ import static org.lwjgl.glfw.GLFW.*;
 
 /**
  * Translates input events into player actions: movement, jumping,
- * camera rotation, fly mode toggle.
+ * camera rotation, sprinting, fly mode toggle.
  *
  * In fly mode:  direct position manipulation (free-cam).
- * In walk mode:  sets velocity; Physics integrates position.
+ * In walk mode:  sets target velocity; applies acceleration/friction;
+ *                Physics handles gravity & integration.
+ *
+ * Movement polish:
+ * - Left Shift = sprint (1.5× speed)
+ * - Smooth acceleration/deceleration via friction
+ * - Reduced air control when airborne
+ * - Auto step-up for ≤0.5 block ledges
  */
 public class Controller {
 
-    private static final float FLY_SPEED        = 20.0f;  // blocks/s
-    private static final float WALK_SPEED       = 4.3f;   // blocks/s (Minecraft-like)
+    // ---- Speed constants ----
+    private static final float FLY_SPEED        = 20.0f;   // blocks/s
+    private static final float WALK_SPEED       = 4.3f;    // blocks/s (Minecraft-like)
+    private static final float SPRINT_MULTIPLIER = 1.5f;   // sprint speed factor
     private static final float MOUSE_SENSITIVITY = 0.1f;
 
+    // ---- Friction / Acceleration ----
+    /** Ground friction: velocity is multiplied by (1 - GROUND_FRICTION * dt) each frame. */
+    private static final float GROUND_FRICTION   = 18.0f;
+    /** Ground acceleration: how fast player reaches target speed. */
+    private static final float GROUND_ACCEL      = 60.0f;
+    /** Air friction (much lower). */
+    private static final float AIR_FRICTION      = 3.0f;
+    /** Air acceleration (reduced control). */
+    private static final float AIR_ACCEL         = 12.0f;
+
     private final Player player;
+    private boolean sprinting = false;
 
     public Controller(Player player) {
         this.player = player;
@@ -29,6 +49,10 @@ public class Controller {
         handleMouseLook();
         handleMovement(dt);
         handleModeToggles();
+    }
+
+    public boolean isSprinting() {
+        return sprinting;
     }
 
     // ---- Mouse look ----
@@ -90,10 +114,12 @@ public class Controller {
 
         // Fly mode doesn't use velocity
         player.getVelocity().set(0);
+        sprinting = false;
     }
 
     /**
-     * Walk mode: set horizontal velocity from input; Physics handles gravity & integration.
+     * Walk mode: compute wish direction, apply acceleration/friction,
+     * handle sprint and jump.
      */
     private void handleWalkMovement(float dt, Vector3f front, Vector3f right) {
         Vector3f vel = player.getVelocity();
@@ -104,22 +130,55 @@ public class Controller {
         Vector3f flatRight = new Vector3f(right.x, 0, right.z);
         if (flatRight.lengthSquared() > 0.001f) flatRight.normalize();
 
+        // Sprint
+        sprinting = Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) && Input.isKeyDown(GLFW_KEY_W);
         float speed = WALK_SPEED;
+        if (sprinting) speed *= SPRINT_MULTIPLIER;
 
-        float moveX = 0, moveZ = 0;
-        if (Input.isKeyDown(GLFW_KEY_W)) { moveX += flatFront.x; moveZ += flatFront.z; }
-        if (Input.isKeyDown(GLFW_KEY_S)) { moveX -= flatFront.x; moveZ -= flatFront.z; }
-        if (Input.isKeyDown(GLFW_KEY_A)) { moveX -= flatRight.x; moveZ -= flatRight.z; }
-        if (Input.isKeyDown(GLFW_KEY_D)) { moveX += flatRight.x; moveZ += flatRight.z; }
+        // Compute wish direction
+        float wishX = 0, wishZ = 0;
+        if (Input.isKeyDown(GLFW_KEY_W)) { wishX += flatFront.x; wishZ += flatFront.z; }
+        if (Input.isKeyDown(GLFW_KEY_S)) { wishX -= flatFront.x; wishZ -= flatFront.z; }
+        if (Input.isKeyDown(GLFW_KEY_A)) { wishX -= flatRight.x; wishZ -= flatRight.z; }
+        if (Input.isKeyDown(GLFW_KEY_D)) { wishX += flatRight.x; wishZ += flatRight.z; }
 
-        float len = (float) Math.sqrt(moveX * moveX + moveZ * moveZ);
-        if (len > 0.001f) {
-            float inv = 1.0f / len;
-            vel.x = moveX * inv * speed;
-            vel.z = moveZ * inv * speed;
-        } else {
-            vel.x = 0;
-            vel.z = 0;
+        float wishLen = (float) Math.sqrt(wishX * wishX + wishZ * wishZ);
+        if (wishLen > 0.001f) {
+            float inv = 1.0f / wishLen;
+            wishX *= inv * speed;
+            wishZ *= inv * speed;
+        }
+
+        // Apply acceleration/friction based on ground state
+        boolean onGround = player.isOnGround();
+        float accel   = onGround ? GROUND_ACCEL   : AIR_ACCEL;
+        float friction = onGround ? GROUND_FRICTION : AIR_FRICTION;
+
+        // Friction: decay current velocity toward zero
+        float frictionFactor = Math.max(0.0f, 1.0f - friction * dt);
+        vel.x *= frictionFactor;
+        vel.z *= frictionFactor;
+
+        // Acceleration: push toward wish velocity
+        float dvx = wishX - vel.x;
+        float dvz = wishZ - vel.z;
+        float accelStep = accel * dt;
+
+        float dvLen = (float) Math.sqrt(dvx * dvx + dvz * dvz);
+        if (dvLen > 0.001f) {
+            float maxAccel = Math.min(accelStep, dvLen);
+            float ratio = maxAccel / dvLen;
+            vel.x += dvx * ratio;
+            vel.z += dvz * ratio;
+        }
+
+        // Clamp horizontal speed to prevent exceeding target
+        float hSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        float maxSpeed = speed * 1.1f; // slight tolerance
+        if (hSpeed > maxSpeed) {
+            float clamp = maxSpeed / hSpeed;
+            vel.x *= clamp;
+            vel.z *= clamp;
         }
 
         // Jump
