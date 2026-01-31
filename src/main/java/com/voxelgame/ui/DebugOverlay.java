@@ -5,8 +5,6 @@ import com.voxelgame.world.World;
 import com.voxelgame.world.WorldConstants;
 import org.joml.Vector3f;
 
-import static org.lwjgl.opengl.GL33.*;
-
 /**
  * Debug information overlay (F3 screen).
  * Shows FPS, position, chunk info, fly mode, and facing direction.
@@ -52,7 +50,7 @@ public class DebugOverlay {
     public void render(Player player, World world, int fps, int screenW, int screenH, boolean sprinting) {
         if (!visible) return;
 
-        glDisable(GL_DEPTH_TEST);
+        // GL state (depth test off, blend on) is managed by GameLoop
 
         Vector3f pos = player.getPosition();
         float yaw   = player.getCamera().getYaw();
@@ -93,8 +91,6 @@ public class DebugOverlay {
                           TEXT_R, TEXT_G, TEXT_B, TEXT_A);
             y += LINE_HEIGHT;
         }
-
-        glEnable(GL_DEPTH_TEST);
     }
 
     /**

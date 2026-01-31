@@ -89,7 +89,9 @@ public class BlockHighlight {
         lineShader.setVec4("uColor", 0.0f, 0.0f, 0.0f, 0.6f);
 
         glLineWidth(2.0f);
-        glDisable(GL_DEPTH_TEST);   // render on top of geometry
+        // Draw with depth test but slight bias so lines appear on top of faces
+        glEnable(GL_POLYGON_OFFSET_LINE);
+        glPolygonOffset(-1.0f, -1.0f);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -97,7 +99,7 @@ public class BlockHighlight {
         glDrawArrays(GL_LINES, 0, 24);
         glBindVertexArray(0);
 
-        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_POLYGON_OFFSET_LINE);
         glDisable(GL_BLEND);
         lineShader.unbind();
     }

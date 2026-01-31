@@ -107,18 +107,13 @@ public class Hud {
         this.sw = screenW;
         this.sh = screenH;
 
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
+        // GL state (depth test off, blend on, cull off) is managed by GameLoop
         uiShader.bind();
 
         renderCrosshair();
         if (player != null) renderHotbar(player);
 
         uiShader.unbind();
-        glDisable(GL_BLEND);
-        glEnable(GL_DEPTH_TEST);
     }
 
     /** Backward-compatible overload (crosshair only). */

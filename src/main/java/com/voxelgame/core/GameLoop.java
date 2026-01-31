@@ -203,6 +203,14 @@ public class GameLoop {
             // ---- Render 3D ----
             int w = window.getWidth();
             int h = window.getHeight();
+
+            // Reset GL state for world rendering (prevent leakage from UI passes)
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(true);
+            glDisable(GL_BLEND);
+            glEnable(GL_CULL_FACE);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             renderer.render(player.getCamera(), w, h);
 
@@ -212,7 +220,13 @@ public class GameLoop {
                     currentHit.x(), currentHit.y(), currentHit.z());
             }
 
-            // ---- Render UI overlay ----
+            // ---- Render UI overlay (2D) ----
+            // Reset state for UI pass
+            glDisable(GL_DEPTH_TEST);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDisable(GL_CULL_FACE);
+
             hud.render(w, h, player);
             debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting());
 
