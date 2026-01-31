@@ -5,7 +5,7 @@ import com.voxelgame.save.SaveManager;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.*;
 import com.voxelgame.world.gen.GenPipeline;
-import com.voxelgame.world.mesh.ChunkMesh;
+import com.voxelgame.world.mesh.MeshResult;
 import com.voxelgame.world.mesh.Mesher;
 import com.voxelgame.world.mesh.NaiveMesher;
 
@@ -151,8 +151,9 @@ public class ChunkManager {
     }
 
     private void buildMesh(Chunk chunk) {
-        ChunkMesh mesh = mesher.mesh(chunk, world);
-        chunk.setMesh(mesh);
+        MeshResult result = mesher.meshAll(chunk, world);
+        chunk.setMesh(result.opaqueMesh());
+        chunk.setTransparentMesh(result.transparentMesh());
         chunk.setDirty(false);
     }
 

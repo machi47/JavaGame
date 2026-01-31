@@ -9,10 +9,12 @@ import com.voxelgame.world.WorldAccess;
  */
 public interface Mesher {
     /**
-     * Build a mesh for the given chunk.
+     * Build meshes for the given chunk.
+     * Returns a MeshResult containing separate opaque and transparent meshes.
+     *
      * @param chunk the chunk to mesh
      * @param world world access for neighbor lookups
-     * @return a ChunkMesh with uploaded GPU data
+     * @return a MeshResult with uploaded GPU data for both passes
      */
-    ChunkMesh mesh(Chunk chunk, WorldAccess world);
+    MeshResult meshAll(Chunk chunk, WorldAccess world);
 }

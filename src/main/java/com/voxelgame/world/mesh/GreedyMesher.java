@@ -16,7 +16,7 @@ public class GreedyMesher implements Mesher {
     }
 
     @Override
-    public ChunkMesh mesh(Chunk chunk, WorldAccess world) {
-        return fallback.mesh(chunk, world);
+    public MeshResult meshAll(Chunk chunk, WorldAccess world) {
+        return fallback.meshAll(chunk, world);
     }
 }

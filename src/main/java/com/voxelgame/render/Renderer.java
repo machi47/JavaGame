@@ -10,8 +10,14 @@ import static org.lwjgl.opengl.GL33.*;
 /**
  * Main rendering coordinator. Binds shader, sets uniforms,
  * renders visible chunk meshes with frustum culling.
+ *
+ * Uses two passes:
+ *   1. Opaque pass  — depth write ON, blend OFF
+ *   2. Transparent pass — depth write OFF, blend ON (water, etc.)
  */
 public class Renderer {
+
+    private static final float WATER_ALPHA = 0.55f;
 
     private Shader blockShader;
     private TextureAtlas atlas;
@@ -37,7 +43,7 @@ public class Renderer {
         Matrix4f projView = new Matrix4f(projection).mul(view);
         frustum.update(projView);
 
-        // Bind shader and set uniforms
+        // Bind shader and set shared uniforms
         blockShader.bind();
         blockShader.setMat4("uProjection", projection);
         blockShader.setMat4("uView", view);
@@ -45,7 +51,9 @@ public class Renderer {
 
         atlas.bind(0);
 
-        // Render all visible chunk meshes
+        // ---- Pass 1: Opaque geometry ----
+        blockShader.setFloat("uAlpha", 1.0f);
+
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
             Chunk chunk = entry.getValue();
@@ -57,6 +65,31 @@ public class Renderer {
                 mesh.draw();
             }
         }
+
+        // ---- Pass 2: Transparent geometry (water) ----
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(false);       // don't write to depth buffer
+        glDisable(GL_CULL_FACE);  // render both sides of water
+
+        blockShader.setFloat("uAlpha", WATER_ALPHA);
+
+        for (var entry : world.getChunkMap().entrySet()) {
+            ChunkPos pos = entry.getKey();
+            Chunk chunk = entry.getValue();
+
+            if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
+
+            var mesh = chunk.getTransparentMesh();
+            if (mesh != null && !mesh.isEmpty()) {
+                mesh.draw();
+            }
+        }
+
+        // Restore state
+        glDepthMask(true);
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
 
         blockShader.unbind();
     }

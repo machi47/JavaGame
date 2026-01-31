@@ -3,6 +3,7 @@ in vec2 vTexCoord;
 in float vLight;
 
 uniform sampler2D uAtlas;
+uniform float uAlpha;   // 1.0 for opaque pass, <1.0 for transparent pass
 
 out vec4 fragColor;
 
@@ -15,5 +16,5 @@ void main() {
 
     // Apply lighting with minimum ambient floor
     float light = max(vLight, MIN_AMBIENT);
-    fragColor = vec4(texColor.rgb * light, texColor.a);
+    fragColor = vec4(texColor.rgb * light, texColor.a * uAlpha);
 }

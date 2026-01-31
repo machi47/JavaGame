@@ -15,6 +15,7 @@ public class Chunk {
     private boolean dirty = true;
     private boolean lightDirty = true;
     private ChunkMesh mesh;
+    private ChunkMesh transparentMesh;
 
     /**
      * Whether this chunk has been modified by the player (block placed/removed)
@@ -156,10 +157,22 @@ public class Chunk {
         this.mesh = mesh;
     }
 
+    public ChunkMesh getTransparentMesh() { return transparentMesh; }
+    public void setTransparentMesh(ChunkMesh mesh) {
+        if (this.transparentMesh != null) {
+            this.transparentMesh.dispose();
+        }
+        this.transparentMesh = mesh;
+    }
+
     public void dispose() {
         if (mesh != null) {
             mesh.dispose();
             mesh = null;
+        }
+        if (transparentMesh != null) {
+            transparentMesh.dispose();
+            transparentMesh = null;
         }
     }
 

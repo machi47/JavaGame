@@ -164,10 +164,16 @@ public class NaiveMesher implements Mesher {
     }
 
     @Override
-    public ChunkMesh mesh(Chunk chunk, WorldAccess world) {
-        List<Float> verts = new ArrayList<>();
-        List<Integer> indices = new ArrayList<>();
-        int vertexCount = 0;
+    public MeshResult meshAll(Chunk chunk, WorldAccess world) {
+        // Separate lists for opaque and transparent geometry
+        List<Float> opaqueVerts = new ArrayList<>();
+        List<Integer> opaqueIndices = new ArrayList<>();
+        int opaqueVertexCount = 0;
+
+        List<Float> transVerts = new ArrayList<>();
+        List<Integer> transIndices = new ArrayList<>();
+        int transVertexCount = 0;
+
         ChunkPos pos = chunk.getPos();
         int cx = pos.x() * WorldConstants.CHUNK_SIZE;
         int cz = pos.z() * WorldConstants.CHUNK_SIZE;
@@ -180,6 +186,13 @@ public class NaiveMesher implements Mesher {
 
                     Block block = Blocks.get(blockId);
                     if (!block.solid() && !block.transparent()) continue;
+
+                    // Determine if this block is transparent (water, etc.)
+                    boolean isTransparent = block.transparent() && !block.solid();
+
+                    // Choose the target vertex/index lists
+                    List<Float> verts = isTransparent ? transVerts : opaqueVerts;
+                    List<Integer> indices = isTransparent ? transIndices : opaqueIndices;
 
                     float wx = cx + x;
                     float wy = y;
@@ -213,24 +226,19 @@ public class NaiveMesher implements Mesher {
                         int[] aoValues = new int[4];
 
                         for (int v = 0; v < 4; v++) {
-                            // AO: check 3 adjacent blocks for occlusion
                             boolean side1 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][0]);
                             boolean side2 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][1]);
                             boolean corner = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][2]);
 
                             int ao;
                             if (side1 && side2) {
-                                ao = 3; // Both sides occlude → corner is also occluded
+                                ao = 3;
                             } else {
                                 ao = (side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0);
                             }
                             aoValues[v] = ao;
 
                             float aoFactor = AO_LEVELS[ao];
-
-                            // Sample sky light at the face neighbor position (where the air is)
-                            // For smooth vertex lighting, average the light from the 4 blocks
-                            // adjacent to this vertex along the face normal direction
                             float skyLight = sampleVertexSkyLight(world, cx + x, y, cz + z,
                                                                    face, aoOffsets[v]);
                             float lightFactor = skyLight / 15.0f;
@@ -238,24 +246,24 @@ public class NaiveMesher implements Mesher {
                             vertLight[v] = dirLight * aoFactor * lightFactor;
                         }
 
-                        // Get vertex positions and UVs for this face
                         float[][] fv = FACE_VERTICES[face];
                         int[][] fuv = FACE_UV[face];
 
-                        // Add 4 vertices
-                        int baseVertex = vertexCount;
+                        int baseVertex = isTransparent ? transVertexCount : opaqueVertexCount;
                         for (int v = 0; v < 4; v++) {
                             float u = (fuv[v][0] == 0) ? uv[0] : uv[2];
                             float vCoord = (fuv[v][1] == 0) ? uv[1] : uv[3];
                             addVertex(verts, wx + fv[v][0], wy + fv[v][1], wz + fv[v][2],
                                      u, vCoord, vertLight[v]);
                         }
-                        vertexCount += 4;
+                        if (isTransparent) {
+                            transVertexCount += 4;
+                        } else {
+                            opaqueVertexCount += 4;
+                        }
 
-                        // AO-aware quad splitting: flip diagonal if needed to avoid artifact
-                        // If ao[0]+ao[2] > ao[1]+ao[3], flip the quad split diagonal
+                        // AO-aware quad splitting
                         if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
-                            // Flipped triangles: (1,2,3) and (1,3,0)
                             indices.add(baseVertex + 1);
                             indices.add(baseVertex + 2);
                             indices.add(baseVertex + 3);
@@ -263,7 +271,6 @@ public class NaiveMesher implements Mesher {
                             indices.add(baseVertex + 3);
                             indices.add(baseVertex);
                         } else {
-                            // Normal triangles: (0,1,2) and (0,2,3)
                             indices.add(baseVertex);
                             indices.add(baseVertex + 1);
                             indices.add(baseVertex + 2);
@@ -276,16 +283,20 @@ public class NaiveMesher implements Mesher {
             }
         }
 
+        ChunkMesh opaqueMesh = buildChunkMesh(opaqueVerts, opaqueIndices);
+        ChunkMesh transparentMesh = buildChunkMesh(transVerts, transIndices);
+        return new MeshResult(opaqueMesh, transparentMesh);
+    }
+
+    private ChunkMesh buildChunkMesh(List<Float> verts, List<Integer> indices) {
         float[] vertArray = new float[verts.size()];
         for (int i = 0; i < verts.size(); i++) {
             vertArray[i] = verts.get(i);
         }
-
         int[] idxArray = new int[indices.size()];
         for (int i = 0; i < indices.size(); i++) {
             idxArray[i] = indices.get(i);
         }
-
         ChunkMesh mesh = new ChunkMesh();
         mesh.upload(vertArray, idxArray);
         return mesh;
