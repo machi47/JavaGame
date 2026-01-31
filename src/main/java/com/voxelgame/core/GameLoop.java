@@ -1,5 +1,7 @@
 package com.voxelgame.core;
 
+import com.voxelgame.agent.ActionQueue;
+import com.voxelgame.agent.AgentServer;
 import com.voxelgame.input.AutomationController;
 import com.voxelgame.platform.Input;
 import com.voxelgame.platform.Window;
@@ -60,11 +62,19 @@ public class GameLoop {
     private String scriptPath = null;
     private AutomationController automationController;
 
+    // Agent interface
+    private boolean agentServerMode = false;
+    private AgentServer agentServer;
+    private ActionQueue agentActionQueue;
+
     // Auto-save timer
     private float autoSaveTimer = 0;
 
     /** Enable automation mode (socket server + optional script). */
     public void setAutomationMode(boolean enabled) { this.automationMode = enabled; }
+
+    /** Enable agent server mode (WebSocket interface for AI agents). */
+    public void setAgentServerMode(boolean enabled) { this.agentServerMode = enabled; }
 
     /** Set path to automation script file. */
     public void setScriptPath(String path) { this.scriptPath = path; }
@@ -182,6 +192,15 @@ public class GameLoop {
             System.out.println("[Automation] Controller initialized");
         }
 
+        // Initialize agent server if enabled
+        if (agentServerMode) {
+            agentActionQueue = new ActionQueue();
+            agentServer = new AgentServer(agentActionQueue);
+            controller.setAgentActionQueue(agentActionQueue);
+            agentServer.start();
+            System.out.println("[AgentServer] WebSocket server starting on port " + AgentServer.DEFAULT_PORT);
+        }
+
         System.out.println("VoxelGame initialized successfully!");
     }
 
@@ -212,6 +231,11 @@ public class GameLoop {
                 world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
             );
             handleBlockInteraction();
+
+            // Broadcast state to connected agents
+            if (agentServer != null) {
+                agentServer.broadcastState(player, world);
+            }
 
             // ---- Auto-save ----
             autoSaveTimer += dt;
@@ -257,16 +281,21 @@ public class GameLoop {
     }
 
     private void handleBlockInteraction() {
-        if (!Input.isCursorLocked()) return;
+        // Check for agent attack/use actions (always valid, not gated by cursor lock)
+        boolean agentAttack = controller.consumeAgentAttack();
+        boolean agentUse = controller.consumeAgentUse();
 
-        if (Input.isLeftMouseClicked() && currentHit != null) {
+        boolean leftClick = agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked());
+        boolean rightClick = agentUse || (Input.isCursorLocked() && Input.isRightMouseClicked());
+
+        if (leftClick && currentHit != null) {
             world.setBlock(currentHit.x(), currentHit.y(), currentHit.z(), 0); // AIR
             Set<ChunkPos> affected = Lighting.onBlockRemoved(world, currentHit.x(), currentHit.y(), currentHit.z());
             chunkManager.rebuildMeshAt(currentHit.x(), currentHit.y(), currentHit.z());
             chunkManager.rebuildChunks(affected);
         }
 
-        if (Input.isRightMouseClicked() && currentHit != null) {
+        if (rightClick && currentHit != null) {
             int px = currentHit.x() + currentHit.nx();
             int py = currentHit.y() + currentHit.ny();
             int pz = currentHit.z() + currentHit.nz();
@@ -315,6 +344,11 @@ public class GameLoop {
     }
 
     private void cleanup() {
+        // Stop agent server
+        if (agentServer != null) {
+            agentServer.shutdown();
+        }
+
         // Stop automation
         if (automationController != null) {
             automationController.stop();

@@ -1,5 +1,6 @@
 package com.voxelgame.sim;
 
+import com.voxelgame.agent.ActionQueue;
 import com.voxelgame.platform.Input;
 import com.voxelgame.render.Camera;
 import org.joml.Vector3f;
@@ -20,10 +21,14 @@ import static org.lwjgl.glfw.GLFW.*;
  * - Reduced air control when airborne
  * - Auto step-up for ≤0.5 block ledges
  *
+ * Agent interface: When an ActionQueue is set, agent actions are drained
+ * each tick and applied with the same priority as keyboard input.
+ *
  * Automation: When AutomationController is active, Input.isKeyDown()
  * transparently returns true for automation-injected keys. No changes
  * needed in this class — automation hooks into Input.java directly.
  * @see com.voxelgame.input.AutomationController
+ * @see com.voxelgame.agent.ActionQueue
  */
 public class Controller {
 
@@ -46,15 +51,104 @@ public class Controller {
     private final Player player;
     private boolean sprinting = false;
 
+    // Agent interface
+    private ActionQueue agentActionQueue = null;
+
+    // Agent movement state (active timed moves)
+    private float agentMoveForward = 0;
+    private float agentMoveStrafe = 0;
+    private long agentMoveEndTime = 0;
+    private boolean agentSprinting = false;
+    private boolean agentCrouching = false;
+
+    // Agent pending click actions (consumed next frame)
+    private boolean agentAttackPending = false;
+    private boolean agentUsePending = false;
+
     public Controller(Player player) {
         this.player = player;
     }
 
+    /** Set the agent action queue. Null to disable. */
+    public void setAgentActionQueue(ActionQueue queue) {
+        this.agentActionQueue = queue;
+    }
+
     public void update(float dt) {
+        // Drain agent actions first (they set state that movement reads)
+        if (agentActionQueue != null) {
+            drainAgentActions();
+        }
+
         handleMouseLook();
         handleMovement(dt);
         handleModeToggles();
         handleHotbar();
+    }
+
+    // ---- Agent action processing ----
+
+    /**
+     * Drain all queued agent actions and apply them.
+     * Actions are applied atomically — same priority as keyboard input.
+     */
+    private void drainAgentActions() {
+        agentActionQueue.drain(action -> {
+            switch (action.type()) {
+                case "action_look" -> {
+                    // Apply yaw/pitch delta directly to camera
+                    player.getCamera().rotate(action.param1(), action.param2());
+                }
+                case "action_move" -> {
+                    // Set timed movement (forward/strafe for duration ms)
+                    agentMoveForward = action.param1();
+                    agentMoveStrafe = action.param2();
+                    agentMoveEndTime = System.currentTimeMillis() + action.durationMs();
+                }
+                case "action_jump" -> {
+                    player.jump();
+                }
+                case "action_crouch" -> {
+                    agentCrouching = action.param1() > 0.5f;
+                }
+                case "action_sprint" -> {
+                    agentSprinting = action.param1() > 0.5f;
+                }
+                case "action_use" -> {
+                    agentUsePending = true;
+                }
+                case "action_attack" -> {
+                    agentAttackPending = true;
+                }
+                case "action_hotbar_select" -> {
+                    player.setSelectedSlot(action.intParam());
+                }
+            }
+        });
+
+        // Expire timed movement
+        if (System.currentTimeMillis() > agentMoveEndTime) {
+            agentMoveForward = 0;
+            agentMoveStrafe = 0;
+        }
+    }
+
+    /** Check if agent has a pending attack (consumed by GameLoop for block breaking). */
+    public boolean consumeAgentAttack() {
+        if (agentAttackPending) {
+            agentAttackPending = false;
+            return true;
+        }
+        return false;
+    }
+
+    /** Check if agent has a pending use action (consumed by GameLoop for block placing). */
+    public boolean consumeAgentUse() {
+        if (agentUsePending) {
+            agentUsePending = false;
+            return true;
+        }
+        return false;
     }
 
     public boolean isSprinting() {
@@ -97,7 +191,7 @@ public class Controller {
     private void handleFlyMovement(float dt, Vector3f front, Vector3f right) {
         Vector3f pos = player.getPosition();
         float speed = FLY_SPEED;
-        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) {
+        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) || agentSprinting) {
             speed *= 2.5f;
         }
 
@@ -109,6 +203,18 @@ public class Controller {
         if (Input.isKeyDown(GLFW_KEY_D)) { moveX += right.x; moveY += right.y; moveZ += right.z; }
         if (Input.isKeyDown(GLFW_KEY_SPACE))        moveY += 1.0f;
         if (Input.isKeyDown(GLFW_KEY_LEFT_CONTROL)) moveY -= 1.0f;
+
+        // Add agent movement in fly mode
+        if (agentMoveForward != 0) {
+            moveX += front.x * agentMoveForward;
+            moveY += front.y * agentMoveForward;
+            moveZ += front.z * agentMoveForward;
+        }
+        if (agentMoveStrafe != 0) {
+            moveX += right.x * agentMoveStrafe;
+            moveY += right.y * agentMoveStrafe;
+            moveZ += right.z * agentMoveStrafe;
+        }
 
         float len = (float) Math.sqrt(moveX * moveX + moveY * moveY + moveZ * moveZ);
         if (len > 0.001f) {
@@ -136,17 +242,28 @@ public class Controller {
         Vector3f flatRight = new Vector3f(right.x, 0, right.z);
         if (flatRight.lengthSquared() > 0.001f) flatRight.normalize();
 
-        // Sprint
-        sprinting = Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) && Input.isKeyDown(GLFW_KEY_W);
+        // Sprint (keyboard OR agent)
+        sprinting = (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) && Input.isKeyDown(GLFW_KEY_W))
+                    || (agentSprinting && agentMoveForward > 0);
         float speed = WALK_SPEED;
         if (sprinting) speed *= SPRINT_MULTIPLIER;
 
-        // Compute wish direction
+        // Compute wish direction from keyboard
         float wishX = 0, wishZ = 0;
         if (Input.isKeyDown(GLFW_KEY_W)) { wishX += flatFront.x; wishZ += flatFront.z; }
         if (Input.isKeyDown(GLFW_KEY_S)) { wishX -= flatFront.x; wishZ -= flatFront.z; }
         if (Input.isKeyDown(GLFW_KEY_A)) { wishX -= flatRight.x; wishZ -= flatRight.z; }
         if (Input.isKeyDown(GLFW_KEY_D)) { wishX += flatRight.x; wishZ += flatRight.z; }
+
+        // Add agent movement (additive with keyboard — both sources contribute)
+        if (agentMoveForward != 0) {
+            wishX += flatFront.x * agentMoveForward;
+            wishZ += flatFront.z * agentMoveForward;
+        }
+        if (agentMoveStrafe != 0) {
+            wishX += flatRight.x * agentMoveStrafe;
+            wishZ += flatRight.z * agentMoveStrafe;
+        }
 
         float wishLen = (float) Math.sqrt(wishX * wishX + wishZ * wishZ);
         if (wishLen > 0.001f) {

@@ -50,6 +50,9 @@ dependencies {
     // Logging
     implementation("org.slf4j:slf4j-api:2.0.9")
     runtimeOnly("ch.qos.logback:logback-classic:1.4.14")
+
+    // Java-WebSocket (agent interface)
+    implementation("org.java-websocket:Java-WebSocket:1.5.6")
 }
 
 tasks.withType<JavaCompile> {

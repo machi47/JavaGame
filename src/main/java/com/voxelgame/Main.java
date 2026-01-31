@@ -9,18 +9,21 @@ import com.voxelgame.core.GameLoop;
  *   java -jar voxelgame.jar                          # normal mode
  *   java -jar voxelgame.jar --automation              # automation mode (socket server on :25565)
  *   java -jar voxelgame.jar --automation --script demo-script.txt  # run script + socket
+ *   java -jar voxelgame.jar --agent-server            # agent interface (WebSocket on :25566)
  */
 public class Main {
     public static void main(String[] args) {
         System.out.println("VoxelGame starting...");
 
         boolean automationMode = false;
+        boolean agentServerMode = false;
         String scriptPath = null;
 
         // Parse command-line arguments
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--automation" -> automationMode = true;
+                case "--agent-server" -> agentServerMode = true;
                 case "--script" -> {
                     if (i + 1 < args.length) {
                         scriptPath = args[++i];
@@ -35,6 +38,7 @@ public class Main {
                     System.out.println();
                     System.out.println("Options:");
                     System.out.println("  --automation        Enable automation mode (socket server on localhost:25565)");
+                    System.out.println("  --agent-server      Enable AI agent interface (WebSocket on localhost:25566)");
                     System.out.println("  --script <file>     Run automation script (implies --automation)");
                     System.out.println("  --help, -h          Show this help message");
                     System.out.println();
@@ -47,6 +51,11 @@ public class Main {
                     System.out.println("  mouse:click:right   Right mouse click");
                     System.out.println("  sleep:<ms>          Wait milliseconds");
                     System.out.println("  quit                Request shutdown");
+                    System.out.println();
+                    System.out.println("Agent Protocol (WebSocket JSON):");
+                    System.out.println("  Connect to ws://localhost:25566");
+                    System.out.println("  Server sends: hello (handshake), state (per-tick)");
+                    System.out.println("  Client sends: action_look, action_move, action_jump, etc.");
                     System.out.println();
                     System.out.println("Key names: W,A,S,D,F,SPACE,SHIFT,CTRL,ESCAPE,F3,1-9,UP,DOWN,LEFT,RIGHT");
                     System.exit(0);
@@ -65,8 +74,13 @@ public class Main {
                 (scriptPath != null ? " (script: " + scriptPath + ")" : " (socket only)"));
         }
 
+        if (agentServerMode) {
+            System.out.println("[AgentServer] Mode enabled (WebSocket on localhost:25566)");
+        }
+
         GameLoop loop = new GameLoop();
         loop.setAutomationMode(automationMode);
+        loop.setAgentServerMode(agentServerMode);
         loop.setScriptPath(scriptPath);
         loop.run();
     }
