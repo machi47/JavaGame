@@ -1,7 +1,10 @@
 package com.voxelgame.core;
 
+import com.voxelgame.platform.Input;
 import com.voxelgame.platform.Window;
 import com.voxelgame.render.GLInit;
+import com.voxelgame.sim.Controller;
+import com.voxelgame.sim.Player;
 
 import static org.lwjgl.opengl.GL33.*;
 
@@ -12,6 +15,8 @@ public class GameLoop {
 
     private Window window;
     private Time time;
+    private Player player;
+    private Controller controller;
 
     public void run() {
         init();
@@ -23,23 +28,38 @@ public class GameLoop {
         window = new Window(1280, 720, "VoxelGame");
         GLInit.init();
         GLInit.setViewport(window.getWidth(), window.getHeight());
+
         time = new Time();
         time.init();
+
+        player = new Player();
+        controller = new Controller(player);
+
+        Input.init(window.getHandle());
+        Input.lockCursor();
+
         System.out.println("VoxelGame initialized successfully!");
     }
 
     private void loop() {
         while (!window.shouldClose()) {
             time.update();
+            float dt = time.getDeltaTime();
+
             window.pollEvents();
 
             if (window.wasResized()) {
                 GLInit.setViewport(window.getWidth(), window.getHeight());
             }
 
-            // Clear screen
+            // Update
+            controller.update(dt);
+
+            // Render
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+            // End frame
+            Input.endFrame();
             window.swapBuffers();
         }
     }
@@ -50,4 +70,5 @@ public class GameLoop {
 
     public Window getWindow() { return window; }
     public Time getTime() { return time; }
+    public Player getPlayer() { return player; }
 }
