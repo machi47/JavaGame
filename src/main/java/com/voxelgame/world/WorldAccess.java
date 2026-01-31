@@ -5,5 +5,7 @@ package com.voxelgame.world;
  * block state without modifying it (e.g., meshing, rendering, physics).
  */
 public interface WorldAccess {
-    // TODO: getBlock(x, y, z), getChunk(cx, cz), isLoaded(cx, cz)
+    int getBlock(int x, int y, int z);
+    Chunk getChunk(int cx, int cz);
+    boolean isLoaded(int cx, int cz);
 }

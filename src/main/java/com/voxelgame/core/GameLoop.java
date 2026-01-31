@@ -3,13 +3,17 @@ package com.voxelgame.core;
 import com.voxelgame.platform.Input;
 import com.voxelgame.platform.Window;
 import com.voxelgame.render.GLInit;
+import com.voxelgame.render.Renderer;
 import com.voxelgame.sim.Controller;
 import com.voxelgame.sim.Player;
+import com.voxelgame.world.Raycast;
+import com.voxelgame.world.World;
+import com.voxelgame.world.stream.ChunkManager;
 
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * Fixed-timestep game loop. Drives update ticks and render frames.
+ * Game loop integrating all subsystems.
  */
 public class GameLoop {
 
@@ -17,6 +21,9 @@ public class GameLoop {
     private Time time;
     private Player player;
     private Controller controller;
+    private World world;
+    private ChunkManager chunkManager;
+    private Renderer renderer;
 
     public void run() {
         init();
@@ -38,6 +45,16 @@ public class GameLoop {
         Input.init(window.getHandle());
         Input.lockCursor();
 
+        world = new World();
+        renderer = new Renderer(world);
+        renderer.init();
+
+        chunkManager = new ChunkManager(world);
+        chunkManager.init(renderer.getAtlas());
+
+        // Initial chunk load
+        chunkManager.update(player);
+
         System.out.println("VoxelGame initialized successfully!");
     }
 
@@ -54,9 +71,12 @@ public class GameLoop {
 
             // Update
             controller.update(dt);
+            chunkManager.update(player);
+            handleBlockInteraction();
 
             // Render
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            renderer.render(player.getCamera(), window.getWidth(), window.getHeight());
 
             // End frame
             Input.endFrame();
@@ -64,7 +84,36 @@ public class GameLoop {
         }
     }
 
+    private void handleBlockInteraction() {
+        if (!Input.isCursorLocked()) return;
+
+        if (Input.isLeftMouseClicked()) {
+            var hit = Raycast.cast(
+                world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
+            );
+            if (hit != null) {
+                world.setBlock(hit.x(), hit.y(), hit.z(), 0); // AIR
+                chunkManager.rebuildMeshAt(hit.x(), hit.y(), hit.z());
+            }
+        }
+
+        if (Input.isRightMouseClicked()) {
+            var hit = Raycast.cast(
+                world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
+            );
+            if (hit != null) {
+                int px = hit.x() + hit.nx();
+                int py = hit.y() + hit.ny();
+                int pz = hit.z() + hit.nz();
+                world.setBlock(px, py, pz, player.getSelectedBlock());
+                chunkManager.rebuildMeshAt(px, py, pz);
+            }
+        }
+    }
+
     private void cleanup() {
+        chunkManager.shutdown();
+        renderer.cleanup();
         window.destroy();
     }
 
