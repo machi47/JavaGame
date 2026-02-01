@@ -1,19 +1,25 @@
 package com.voxelgame.ui;
 
 import com.voxelgame.render.Shader;
+import com.voxelgame.render.TextureAtlas;
 import com.voxelgame.sim.Inventory;
 import com.voxelgame.sim.Recipe;
 import com.voxelgame.sim.RecipeRegistry;
 import com.voxelgame.sim.ToolItem;
+import com.voxelgame.world.Block;
+import com.voxelgame.world.Blocks;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * Full-screen inventory UI with 2x2 crafting grid. Opened with E key.
+ * Full-screen inventory UI with 2x2 crafting grid.
+ * Supports: textured items, tooltips, right-click, shift-click, drag distribution.
  */
 public class InventoryScreen {
 
@@ -85,8 +91,10 @@ public class InventoryScreen {
     private Recipe currentRecipe = null;
 
     private Shader uiShader;
+    private Shader texShader;
     private int quadVao, quadVbo;
     private BitmapFont font;
+    private TextureAtlas atlas;
     private int sw, sh;
     private float mouseX, mouseY;
 
@@ -94,9 +102,19 @@ public class InventoryScreen {
     private float craftX0, craftY0;
     private float resultX, resultY;
 
+    // ---- Tooltip state ----
+    private int hoveredSlot = -1;
+
+    // ---- Drag state ----
+    private boolean isDragging = false;
+    private boolean dragIsRight = false;
+    private final List<Integer> dragSlots = new ArrayList<>();
+    private Inventory.ItemStack dragOriginal = null; // snapshot of held item at drag start
+
     public void init(BitmapFont font) {
         this.font = font;
         uiShader = new Shader("shaders/ui.vert", "shaders/ui.frag");
+        texShader = new Shader("shaders/ui_tex.vert", "shaders/ui_tex.frag");
 
         float[] v = { 0,0, 1,0, 1,1,  0,0, 1,1, 0,1 };
         quadVao = glGenVertexArrays();
@@ -113,13 +131,16 @@ public class InventoryScreen {
         glBindVertexArray(0);
     }
 
+    public void setAtlas(TextureAtlas atlas) { this.atlas = atlas; }
+
     public boolean isVisible() { return visible; }
-    public void setVisible(boolean v) { visible = v; if (!v) heldItem = null; }
-    public void toggle() { visible = !visible; if (!visible) heldItem = null; }
+    public void setVisible(boolean v) { visible = v; if (!v) { heldItem = null; cancelDrag(); } }
+    public void toggle() { visible = !visible; if (!visible) { heldItem = null; cancelDrag(); } }
     public boolean isOpen() { return visible; }
 
     public void close(Inventory inventory) {
         visible = false;
+        cancelDrag();
         if (heldItem != null) {
             inventory.addItemStack(heldItem);
             heldItem = null;
@@ -133,7 +154,7 @@ public class InventoryScreen {
         currentRecipe = null;
     }
 
-    public void close() { visible = false; heldItem = null; }
+    public void close() { visible = false; heldItem = null; cancelDrag(); }
 
     public void updateMouse(double mx, double my, int screenH) {
         this.mouseX = (float) mx;
@@ -141,7 +162,7 @@ public class InventoryScreen {
     }
 
     // ================================================================
-    // Click handling
+    // Click handling — left click
     // ================================================================
 
     public void handleClick(Inventory inventory, double mx, double my,
@@ -156,12 +177,14 @@ public class InventoryScreen {
         int clickedSlot = getSlotAt(clickX, clickY);
         if (clickedSlot < 0) return;
 
-        if (clickedSlot >= 0 && clickedSlot < Inventory.TOTAL_SIZE) {
+        if (shiftHeld) {
+            handleShiftClick(inventory, clickedSlot);
+        } else if (clickedSlot >= 0 && clickedSlot < Inventory.TOTAL_SIZE) {
             handleInventorySlotClick(inventory, clickedSlot);
         } else if (clickedSlot >= GRID_SLOT_BASE && clickedSlot <= GRID_SLOT_BASE + 3) {
             handleCraftingGridClick(clickedSlot - GRID_SLOT_BASE);
         } else if (clickedSlot == RESULT_SLOT) {
-            handleCraftingResultClick(inventory, shiftHeld);
+            handleCraftingResultClick(inventory, false);
         }
         updateCraftingResult();
     }
@@ -170,6 +193,329 @@ public class InventoryScreen {
                             int screenW, int screenH) {
         handleClick(inventory, mx, my, screenW, screenH, false);
     }
+
+    // ================================================================
+    // Right-click handling
+    // ================================================================
+
+    public void handleRightClick(Inventory inventory, double mx, double my,
+                                  int screenW, int screenH) {
+        if (!visible) return;
+        this.sw = screenW;
+        this.sh = screenH;
+        float clickX = (float) mx;
+        float clickY = screenH - (float) my;
+        computeLayout();
+
+        int clickedSlot = getSlotAt(clickX, clickY);
+        if (clickedSlot < 0) return;
+
+        if (clickedSlot >= 0 && clickedSlot < Inventory.TOTAL_SIZE) {
+            handleInventorySlotRightClick(inventory, clickedSlot);
+        } else if (clickedSlot >= GRID_SLOT_BASE && clickedSlot <= GRID_SLOT_BASE + 3) {
+            handleCraftingGridRightClick(clickedSlot - GRID_SLOT_BASE);
+        } else if (clickedSlot == RESULT_SLOT) {
+            handleCraftingResultClick(inventory, false);
+        }
+        updateCraftingResult();
+    }
+
+    private void handleInventorySlotRightClick(Inventory inventory, int slot) {
+        Inventory.ItemStack slotItem = inventory.getSlot(slot);
+        if (heldItem == null) {
+            // Pick up half (round up)
+            if (slotItem != null && !slotItem.isEmpty()) {
+                int total = slotItem.getCount();
+                int takeAmount = (total + 1) / 2; // round up
+                heldItem = slotItem.copy();
+                heldItem.setCount(takeAmount);
+                slotItem.setCount(total - takeAmount);
+                if (slotItem.isEmpty()) inventory.setSlot(slot, null);
+            }
+        } else {
+            // Place 1 item
+            if (slotItem == null || slotItem.isEmpty()) {
+                Inventory.ItemStack placed = heldItem.copy();
+                placed.setCount(1);
+                inventory.setSlot(slot, placed);
+                heldItem.remove(1);
+                if (heldItem.isEmpty()) heldItem = null;
+            } else if (slotItem.getBlockId() == heldItem.getBlockId()
+                       && !slotItem.isFull()
+                       && !slotItem.hasDurability() && !heldItem.hasDurability()) {
+                slotItem.add(1);
+                heldItem.remove(1);
+                if (heldItem.isEmpty()) heldItem = null;
+            }
+        }
+    }
+
+    private void handleCraftingGridRightClick(int gridIdx) {
+        Inventory.ItemStack gridItem = craftingGrid[gridIdx];
+        if (heldItem == null) {
+            // Pick up half (round up)
+            if (gridItem != null && !gridItem.isEmpty()) {
+                int total = gridItem.getCount();
+                int takeAmount = (total + 1) / 2;
+                heldItem = gridItem.copy();
+                heldItem.setCount(takeAmount);
+                gridItem.setCount(total - takeAmount);
+                if (gridItem.isEmpty()) craftingGrid[gridIdx] = null;
+            }
+        } else {
+            // Place 1 item
+            if (gridItem == null || gridItem.isEmpty()) {
+                Inventory.ItemStack placed = heldItem.copy();
+                placed.setCount(1);
+                craftingGrid[gridIdx] = placed;
+                heldItem.remove(1);
+                if (heldItem.isEmpty()) heldItem = null;
+            } else if (gridItem.getBlockId() == heldItem.getBlockId()
+                       && !gridItem.isFull()
+                       && !gridItem.hasDurability() && !heldItem.hasDurability()) {
+                gridItem.add(1);
+                heldItem.remove(1);
+                if (heldItem.isEmpty()) heldItem = null;
+            }
+        }
+    }
+
+    // ================================================================
+    // Shift-click handling
+    // ================================================================
+
+    private void handleShiftClick(Inventory inventory, int clickedSlot) {
+        if (clickedSlot == RESULT_SLOT) {
+            handleCraftingResultClick(inventory, true);
+            return;
+        }
+
+        if (clickedSlot >= GRID_SLOT_BASE && clickedSlot <= GRID_SLOT_BASE + 3) {
+            // Move crafting grid item to inventory
+            int gridIdx = clickedSlot - GRID_SLOT_BASE;
+            if (craftingGrid[gridIdx] != null && !craftingGrid[gridIdx].isEmpty()) {
+                inventory.addItemStack(craftingGrid[gridIdx]);
+                craftingGrid[gridIdx] = null;
+            }
+            return;
+        }
+
+        if (clickedSlot < 0 || clickedSlot >= Inventory.TOTAL_SIZE) return;
+
+        Inventory.ItemStack slotItem = inventory.getSlot(clickedSlot);
+        if (slotItem == null || slotItem.isEmpty()) return;
+
+        boolean isHotbar = clickedSlot < Inventory.HOTBAR_SIZE;
+
+        if (isHotbar) {
+            // Move hotbar → storage (slots 9-35): try stacking first, then empty slots
+            moveToRange(inventory, clickedSlot, Inventory.HOTBAR_SIZE, Inventory.TOTAL_SIZE);
+        } else {
+            // Move storage → hotbar (slots 0-8): try stacking first, then empty slots
+            moveToRange(inventory, clickedSlot, 0, Inventory.HOTBAR_SIZE);
+        }
+    }
+
+    private void moveToRange(Inventory inventory, int sourceSlot, int destStart, int destEnd) {
+        Inventory.ItemStack source = inventory.getSlot(sourceSlot);
+        if (source == null || source.isEmpty()) return;
+
+        // First pass: try to stack with existing matching slots
+        if (!source.hasDurability()) {
+            for (int i = destStart; i < destEnd && !source.isEmpty(); i++) {
+                Inventory.ItemStack dest = inventory.getSlot(i);
+                if (dest != null && !dest.isEmpty()
+                    && dest.getBlockId() == source.getBlockId()
+                    && !dest.isFull() && !dest.hasDurability()) {
+                    int leftover = dest.add(source.getCount());
+                    source.setCount(leftover);
+                }
+            }
+        }
+
+        // Second pass: find empty slots
+        for (int i = destStart; i < destEnd && !source.isEmpty(); i++) {
+            Inventory.ItemStack dest = inventory.getSlot(i);
+            if (dest == null || dest.isEmpty()) {
+                inventory.setSlot(i, source.copy());
+                source.setCount(0);
+            }
+        }
+
+        if (source.isEmpty()) {
+            inventory.setSlot(sourceSlot, null);
+        }
+    }
+
+    // ================================================================
+    // Drag handling
+    // ================================================================
+
+    /**
+     * Called each frame to update drag state.
+     * @param leftDown  true if left mouse button is held
+     * @param rightDown true if right mouse button is held
+     */
+    public void updateDrag(Inventory inventory, boolean leftDown, boolean rightDown,
+                           double mx, double my, int screenW, int screenH) {
+        if (!visible) return;
+        this.sw = screenW;
+        this.sh = screenH;
+        float cx = (float) mx;
+        float cy = screenH - (float) my;
+        computeLayout();
+
+        if (heldItem == null || heldItem.isEmpty()) {
+            cancelDrag();
+            return;
+        }
+
+        // Start drag if moving with button held and we have items
+        if (!isDragging && (leftDown || rightDown)) {
+            int slot = getSlotAt(cx, cy);
+            if (slot >= 0 && dragSlots.isEmpty()) {
+                isDragging = true;
+                dragIsRight = rightDown;
+                dragOriginal = heldItem.copy();
+                dragSlots.clear();
+            }
+        }
+
+        if (isDragging) {
+            int slot = getSlotAt(cx, cy);
+            if (slot >= 0 && slot != RESULT_SLOT && !dragSlots.contains(slot)) {
+                // Check if this slot is compatible for dragging
+                boolean canAdd = false;
+                if (slot < Inventory.TOTAL_SIZE) {
+                    Inventory.ItemStack slotItem = inventory.getSlot(slot);
+                    canAdd = (slotItem == null || slotItem.isEmpty()
+                              || (slotItem.getBlockId() == heldItem.getBlockId()
+                                  && !slotItem.isFull() && !slotItem.hasDurability()));
+                } else if (slot >= GRID_SLOT_BASE && slot <= GRID_SLOT_BASE + 3) {
+                    int gi = slot - GRID_SLOT_BASE;
+                    Inventory.ItemStack gridItem = craftingGrid[gi];
+                    canAdd = (gridItem == null || gridItem.isEmpty()
+                              || (gridItem.getBlockId() == heldItem.getBlockId()
+                                  && !gridItem.isFull() && !gridItem.hasDurability()));
+                }
+                if (canAdd) {
+                    dragSlots.add(slot);
+                }
+            }
+
+            // Check if we should cancel drag (button released or not enough items)
+            if ((!leftDown && !dragIsRight) || (!rightDown && dragIsRight)) {
+                finishDrag(inventory);
+            }
+        }
+    }
+
+    /**
+     * Finish the current drag operation, distributing items.
+     */
+    public void finishDrag(Inventory inventory) {
+        if (!isDragging || dragSlots.isEmpty() || heldItem == null || heldItem.isEmpty()) {
+            cancelDrag();
+            return;
+        }
+
+        if (dragSlots.size() <= 1) {
+            // Single slot drag — not really a drag, cancel
+            cancelDrag();
+            return;
+        }
+
+        if (dragIsRight) {
+            // Right-drag: place 1 item in each hovered slot
+            int placed = 0;
+            for (int slot : dragSlots) {
+                if (heldItem == null || heldItem.isEmpty()) break;
+                if (slot < Inventory.TOTAL_SIZE) {
+                    Inventory.ItemStack slotItem = inventory.getSlot(slot);
+                    if (slotItem == null || slotItem.isEmpty()) {
+                        Inventory.ItemStack one = heldItem.copy();
+                        one.setCount(1);
+                        inventory.setSlot(slot, one);
+                        heldItem.remove(1);
+                        placed++;
+                    } else if (slotItem.getBlockId() == heldItem.getBlockId()
+                               && !slotItem.isFull() && !slotItem.hasDurability()) {
+                        slotItem.add(1);
+                        heldItem.remove(1);
+                        placed++;
+                    }
+                } else if (slot >= GRID_SLOT_BASE && slot <= GRID_SLOT_BASE + 3) {
+                    int gi = slot - GRID_SLOT_BASE;
+                    Inventory.ItemStack gridItem = craftingGrid[gi];
+                    if (gridItem == null || gridItem.isEmpty()) {
+                        Inventory.ItemStack one = heldItem.copy();
+                        one.setCount(1);
+                        craftingGrid[gi] = one;
+                        heldItem.remove(1);
+                        placed++;
+                    } else if (gridItem.getBlockId() == heldItem.getBlockId()
+                               && !gridItem.isFull() && !gridItem.hasDurability()) {
+                        gridItem.add(1);
+                        heldItem.remove(1);
+                        placed++;
+                    }
+                }
+            }
+            if (heldItem != null && heldItem.isEmpty()) heldItem = null;
+        } else {
+            // Left-drag: split held stack evenly across hovered slots
+            int total = heldItem.getCount();
+            int slots = dragSlots.size();
+            int perSlot = total / slots;
+            int remainder = total % slots;
+
+            if (perSlot < 1) {
+                cancelDrag();
+                return;
+            }
+
+            for (int slot : dragSlots) {
+                int amount = perSlot;
+                if (slot < Inventory.TOTAL_SIZE) {
+                    Inventory.ItemStack slotItem = inventory.getSlot(slot);
+                    if (slotItem == null || slotItem.isEmpty()) {
+                        Inventory.ItemStack split = heldItem.copy();
+                        split.setCount(amount);
+                        inventory.setSlot(slot, split);
+                    } else if (slotItem.getBlockId() == heldItem.getBlockId()
+                               && !slotItem.hasDurability()) {
+                        slotItem.add(amount);
+                    }
+                } else if (slot >= GRID_SLOT_BASE && slot <= GRID_SLOT_BASE + 3) {
+                    int gi = slot - GRID_SLOT_BASE;
+                    Inventory.ItemStack gridItem = craftingGrid[gi];
+                    if (gridItem == null || gridItem.isEmpty()) {
+                        Inventory.ItemStack split = heldItem.copy();
+                        split.setCount(amount);
+                        craftingGrid[gi] = split;
+                    } else if (gridItem.getBlockId() == heldItem.getBlockId()
+                               && !gridItem.hasDurability()) {
+                        gridItem.add(amount);
+                    }
+                }
+            }
+            heldItem.setCount(remainder);
+            if (heldItem.isEmpty()) heldItem = null;
+        }
+
+        updateCraftingResult();
+        cancelDrag();
+    }
+
+    private void cancelDrag() {
+        isDragging = false;
+        dragSlots.clear();
+        dragOriginal = null;
+    }
+
+    // ================================================================
+    // Left-click slot handlers (original)
+    // ================================================================
 
     private void handleInventorySlotClick(Inventory inventory, int slot) {
         Inventory.ItemStack slotItem = inventory.getSlot(slot);
@@ -343,6 +689,9 @@ public class InventoryScreen {
         this.sh = screenH;
         computeLayout();
 
+        // Update hovered slot for tooltip
+        hoveredSlot = getSlotAt(mouseX, mouseY);
+
         uiShader.bind();
         glBindVertexArray(quadVao);
 
@@ -362,11 +711,26 @@ public class InventoryScreen {
         renderCraftingArrow();
         renderResultSlot();
 
+        // Render drag highlights
+        if (isDragging && !dragSlots.isEmpty()) {
+            for (int slot : dragSlots) {
+                float[] pos = getSlotPosition(slot);
+                if (pos != null) {
+                    fillRect(pos[0], pos[1], SLOT_SIZE, SLOT_SIZE, 1.0f, 1.0f, 1.0f, 0.15f);
+                }
+            }
+        }
+
+        // Render held item at cursor
         if (heldItem != null && !heldItem.isEmpty()) {
+            uiShader.bind();
+            glBindVertexArray(quadVao);
             renderItemPreview(mouseX - SLOT_SIZE / 2, mouseY - SLOT_SIZE / 2, heldItem);
         }
 
         uiShader.unbind();
+
+        // ---- Text rendering ----
         if (font != null) {
             float titleY = invY0 + totalH + BG_PADDING + 4;
             font.drawText("Inventory", invX0, titleY, 2.0f, sw, sh, 0.9f, 0.9f, 0.9f, 1.0f);
@@ -374,25 +738,148 @@ public class InventoryScreen {
             renderInventoryText(inventory);
             renderCraftingGridText();
             renderResultText();
+
+            // Held item count
             if (heldItem != null && !heldItem.isEmpty() && heldItem.getCount() > 1 && !heldItem.hasDurability()) {
                 String cs = String.valueOf(heldItem.getCount());
                 float textScale = 1.5f;
                 float charW = 8 * textScale;
                 float charH = 8 * textScale;
                 float tx = mouseX - SLOT_SIZE / 2 + SLOT_SIZE - charW * cs.length() - 2;
-                // Convert OpenGL Y-up to screen Y-down for BitmapFont
                 float ty = sh - (mouseY - SLOT_SIZE / 2) - charH - 2;
                 font.drawText(cs, tx + 1, ty + 1, textScale, sw, sh, 0, 0, 0, 0.8f);
                 font.drawText(cs, tx, ty, textScale, sw, sh, 1, 1, 1, 1);
             }
             if (heldItem != null && heldItem.hasDurability()) {
                 String name = ToolItem.getDisplayName(heldItem.getBlockId());
-                // Convert OpenGL Y-up to screen Y-down for BitmapFont
                 float nameY = sh - mouseY - 6;
                 font.drawText(name, mouseX + SLOT_SIZE / 2 + 4, nameY, 1.5f, sw, sh, 1, 1, 0.7f, 1);
             }
+
+            // ---- Tooltip ----
+            renderTooltip(inventory);
         }
     }
+
+    // ================================================================
+    // Tooltip rendering
+    // ================================================================
+
+    private void renderTooltip(Inventory inventory) {
+        if (hoveredSlot < 0) return;
+        if (heldItem != null && !heldItem.isEmpty()) return; // Don't show tooltip when holding
+
+        String tooltipText = null;
+
+        if (hoveredSlot >= 0 && hoveredSlot < Inventory.TOTAL_SIZE) {
+            Inventory.ItemStack stack = inventory.getSlot(hoveredSlot);
+            if (stack != null && !stack.isEmpty()) {
+                tooltipText = getItemDisplayName(stack);
+            }
+        } else if (hoveredSlot >= GRID_SLOT_BASE && hoveredSlot <= GRID_SLOT_BASE + 3) {
+            int gi = hoveredSlot - GRID_SLOT_BASE;
+            if (craftingGrid[gi] != null && !craftingGrid[gi].isEmpty()) {
+                tooltipText = getItemDisplayName(craftingGrid[gi]);
+            }
+        } else if (hoveredSlot == RESULT_SLOT && currentRecipe != null) {
+            int outputId = currentRecipe.getOutputId();
+            tooltipText = getItemDisplayName(outputId);
+        }
+
+        if (tooltipText == null) return;
+
+        // Render tooltip background + text near cursor
+        float textScale = 1.5f;
+        float charW = 8 * textScale;
+        float charH = 8 * textScale;
+        float textW = tooltipText.length() * charW;
+        float tooltipPadding = 4.0f;
+        float ttW = textW + tooltipPadding * 2;
+        float ttH = charH + tooltipPadding * 2;
+
+        // Position tooltip above cursor
+        float ttX = mouseX + 12;
+        float ttY = mouseY + 16;
+
+        // Clamp to screen
+        if (ttX + ttW > sw) ttX = sw - ttW - 4;
+        if (ttY + ttH > sh) ttY = mouseY - ttH - 4;
+
+        // Draw background
+        uiShader.bind();
+        glBindVertexArray(quadVao);
+        fillRect(ttX - 1, ttY - 1, ttW + 2, ttH + 2, 0.1f, 0.0f, 0.2f, 0.9f);
+        fillRect(ttX, ttY, ttW, ttH, 0.12f, 0.06f, 0.18f, 0.95f);
+        uiShader.unbind();
+
+        // Draw text (convert OpenGL Y-up to screen Y-down)
+        float screenTextY = sh - (ttY + tooltipPadding) - charH;
+        font.drawText(tooltipText, ttX + tooltipPadding, screenTextY, textScale,
+                      sw, sh, 1.0f, 1.0f, 1.0f, 1.0f);
+    }
+
+    private String getItemDisplayName(Inventory.ItemStack stack) {
+        return getItemDisplayName(stack.getBlockId());
+    }
+
+    private String getItemDisplayName(int blockId) {
+        if (ToolItem.isTool(blockId)) {
+            return ToolItem.getDisplayName(blockId);
+        }
+        Block block = Blocks.get(blockId);
+        String name = block.name();
+        // Capitalize and prettify
+        return prettifyName(name);
+    }
+
+    private String prettifyName(String rawName) {
+        if (rawName == null || rawName.isEmpty()) return "Unknown";
+        String[] parts = rawName.split("_");
+        StringBuilder sb = new StringBuilder();
+        for (String part : parts) {
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(part.charAt(0)));
+            if (part.length() > 1) sb.append(part.substring(1));
+        }
+        return sb.toString();
+    }
+
+    // ================================================================
+    // Slot position helper
+    // ================================================================
+
+    private float[] getSlotPosition(int slot) {
+        computeLayout();
+        if (slot >= 0 && slot < Inventory.TOTAL_SIZE) {
+            int row, col;
+            if (slot < 9) {
+                row = 0;
+                col = slot;
+            } else {
+                row = 1 + (slot - 9) / 9;
+                col = (slot - 9) % 9;
+            }
+            float sx = invX0 + col * (SLOT_SIZE + SLOT_GAP);
+            float sy;
+            if (row == 0) sy = invY0;
+            else sy = invY0 + SLOT_SIZE + ROW_GAP + (row - 1) * (SLOT_SIZE + SLOT_GAP);
+            return new float[]{sx, sy};
+        } else if (slot >= GRID_SLOT_BASE && slot <= GRID_SLOT_BASE + 3) {
+            int gi = slot - GRID_SLOT_BASE;
+            int row = gi / 2;
+            int col = gi % 2;
+            float sx = craftX0 + col * (SLOT_SIZE + SLOT_GAP);
+            float sy = craftY0 + (1 - row) * (SLOT_SIZE + SLOT_GAP);
+            return new float[]{sx, sy};
+        } else if (slot == RESULT_SLOT) {
+            return new float[]{resultX, resultY};
+        }
+        return null;
+    }
+
+    // ================================================================
+    // Rendering helpers
+    // ================================================================
 
     private void renderInventorySlots(Inventory inventory) {
         for (int row = 0; row < 4; row++) {
@@ -402,9 +889,16 @@ public class InventoryScreen {
                 if (row == 0) sy = invY0;
                 else sy = invY0 + SLOT_SIZE + ROW_GAP + (row - 1) * (SLOT_SIZE + SLOT_GAP);
                 int slot = (row == 0) ? col : (9 + (row - 1) * 9 + col);
+
+                uiShader.bind();
+                glBindVertexArray(quadVao);
                 fillRect(sx, sy, SLOT_SIZE, SLOT_SIZE, 0.2f, 0.2f, 0.2f, 0.8f);
+
                 Inventory.ItemStack stack = inventory.getSlot(slot);
                 if (stack != null && !stack.isEmpty()) renderItemPreview(sx, sy, stack);
+
+                uiShader.bind();
+                glBindVertexArray(quadVao);
                 strokeRect(sx, sy, SLOT_SIZE, SLOT_SIZE, BORDER, 0.4f, 0.4f, 0.4f, 0.7f);
             }
         }
@@ -415,10 +909,17 @@ public class InventoryScreen {
             for (int col = 0; col < 2; col++) {
                 float sx = craftX0 + col * (SLOT_SIZE + SLOT_GAP);
                 float sy = craftY0 + (1 - row) * (SLOT_SIZE + SLOT_GAP);
+
+                uiShader.bind();
+                glBindVertexArray(quadVao);
                 fillRect(sx, sy, SLOT_SIZE, SLOT_SIZE, 0.22f, 0.20f, 0.18f, 0.8f);
+
                 int gridIdx = row * 2 + col;
                 if (craftingGrid[gridIdx] != null && !craftingGrid[gridIdx].isEmpty())
                     renderItemPreview(sx, sy, craftingGrid[gridIdx]);
+
+                uiShader.bind();
+                glBindVertexArray(quadVao);
                 strokeRect(sx, sy, SLOT_SIZE, SLOT_SIZE, BORDER, 0.5f, 0.45f, 0.3f, 0.8f);
             }
         }
@@ -436,7 +937,11 @@ public class InventoryScreen {
     private void renderResultSlot() {
         float bgR = 0.18f, bgG = 0.22f, bgB = 0.18f;
         if (currentRecipe != null) { bgR = 0.20f; bgG = 0.28f; bgB = 0.20f; }
+
+        uiShader.bind();
+        glBindVertexArray(quadVao);
         fillRect(resultX, resultY, SLOT_SIZE, SLOT_SIZE, bgR, bgG, bgB, 0.8f);
+
         if (currentRecipe != null) {
             int outputId = currentRecipe.getOutputId();
             Inventory.ItemStack resultStack;
@@ -448,17 +953,27 @@ public class InventoryScreen {
             }
             renderItemPreview(resultX, resultY, resultStack);
         }
+
+        uiShader.bind();
+        glBindVertexArray(quadVao);
         float bR = 0.7f, bG = 0.6f, bB = 0.2f;
         if (currentRecipe != null) { bR = 1.0f; bG = 0.85f; bB = 0.3f; }
         strokeRect(resultX, resultY, SLOT_SIZE, SLOT_SIZE, SELECTED_BORDER, bR, bG, bB, 0.9f);
     }
 
+    /**
+     * Render an item preview — uses atlas texture when available, falls back to colored square.
+     */
     private void renderItemPreview(float sx, float sy, Inventory.ItemStack stack) {
         int bid = stack.getBlockId();
-        if (bid > 0 && bid < BLOCK_COLORS.length) {
-            float[] c = BLOCK_COLORS[bid];
-            float off = (SLOT_SIZE - PREVIEW_SIZE) / 2f;
-            if (stack.hasDurability()) {
+        float off = (SLOT_SIZE - PREVIEW_SIZE) / 2f;
+
+        if (stack.hasDurability()) {
+            // Tool rendering (colored shape)
+            uiShader.bind();
+            glBindVertexArray(quadVao);
+            if (bid > 0 && bid < BLOCK_COLORS.length) {
+                float[] c = BLOCK_COLORS[bid];
                 float headH = PREVIEW_SIZE * 0.5f;
                 float handleW = PREVIEW_SIZE * 0.25f;
                 float handleH = PREVIEW_SIZE * 0.5f;
@@ -472,7 +987,34 @@ public class InventoryScreen {
                     float g = durFrac > 0.5f ? 1.0f : durFrac * 2;
                     fillRect(sx + 2, sy + 2, (SLOT_SIZE - 4) * durFrac, 3, r, g, 0.2f, 0.9f);
                 }
-            } else {
+            }
+            return;
+        }
+
+        // Try to render with texture atlas
+        Block block = Blocks.get(bid);
+        int tileIndex = block.getTextureIndex(0); // Top face texture
+
+        if (atlas != null && tileIndex > 0) {
+            // Render with atlas texture
+            float[] uv = atlas.getUV(tileIndex);
+            texShader.bind();
+            glBindVertexArray(quadVao);
+            atlas.bind(0);
+            texShader.setInt("uTexture", 0);
+            texShader.setVec4("uUVRect", uv[0], uv[1], uv[2], uv[3]);
+            setProjectionTex(new Matrix4f().ortho(
+                -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
+                -(sy + off) / PREVIEW_SIZE, (sh - sy - off) / PREVIEW_SIZE,
+                -1, 1));
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            texShader.unbind();
+        } else {
+            // Fallback to colored square
+            uiShader.bind();
+            glBindVertexArray(quadVao);
+            if (bid > 0 && bid < BLOCK_COLORS.length) {
+                float[] c = BLOCK_COLORS[bid];
                 fillRect(sx + off, sy + off, PREVIEW_SIZE, PREVIEW_SIZE, c[0], c[1], c[2], c[3]);
             }
         }
@@ -518,11 +1060,14 @@ public class InventoryScreen {
         float charW = 8 * textScale;
         float charH = 8 * textScale;
         float tx = sx + SLOT_SIZE - charW * cs.length() - 2;
-        // Convert OpenGL Y-up to screen Y-down for BitmapFont; position at bottom-right of slot
         float ty = sh - sy - charH - 2;
         font.drawText(cs, tx + 1, ty + 1, textScale, sw, sh, 0, 0, 0, 0.8f);
         font.drawText(cs, tx, ty, textScale, sw, sh, 1, 1, 1, 1);
     }
+
+    // ================================================================
+    // GL drawing helpers
+    // ================================================================
 
     private void fillRect(float x, float y, float w, float h,
                            float r, float g, float b, float a) {
@@ -552,9 +1097,20 @@ public class InventoryScreen {
         }
     }
 
+    private void setProjectionTex(Matrix4f proj) {
+        try (MemoryStack stk = MemoryStack.stackPush()) {
+            FloatBuffer fb = stk.mallocFloat(16);
+            proj.get(fb);
+            glUniformMatrix4fv(
+                glGetUniformLocation(texShader.getProgramId(), "uProjection"),
+                false, fb);
+        }
+    }
+
     public void cleanup() {
         if (quadVbo != 0) glDeleteBuffers(quadVbo);
         if (quadVao != 0) glDeleteVertexArrays(quadVao);
         if (uiShader != null) uiShader.cleanup();
+        if (texShader != null) texShader.cleanup();
     }
 }

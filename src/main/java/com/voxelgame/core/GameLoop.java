@@ -448,6 +448,7 @@ public class GameLoop {
         hud = new Hud();
         hud.init();
         hud.setFont(bitmapFont);
+        hud.setAtlas(renderer.getAtlas());
         debugOverlay = new DebugOverlay(bitmapFont);
         deathScreen = new DeathScreen(bitmapFont);
         deathScreen.init();
@@ -456,6 +457,7 @@ public class GameLoop {
 
         inventoryScreen = new InventoryScreen();
         inventoryScreen.init(bitmapFont);
+        inventoryScreen.setAtlas(renderer.getAtlas());
         controller.setInventoryScreen(inventoryScreen);
 
         chestScreen = new ChestScreen();
@@ -868,7 +870,7 @@ public class GameLoop {
             hud.setBreakProgress(0);
         }
 
-        // Inventory clicks + mouse tracking
+        // Inventory clicks + mouse tracking + right-click + drag
         if (inventoryScreen.isVisible()) {
             inventoryScreen.updateMouse(Input.getMouseX(), Input.getMouseY(), h);
             if (Input.isLeftMouseClicked()) {
@@ -876,6 +878,14 @@ public class GameLoop {
                     Input.getMouseX(), Input.getMouseY(), w, h,
                     Input.isKeyDown(GLFW_KEY_LEFT_SHIFT));
             }
+            if (Input.isRightMouseClicked()) {
+                inventoryScreen.handleRightClick(player.getInventory(),
+                    Input.getMouseX(), Input.getMouseY(), w, h);
+            }
+            // Update drag state each frame
+            inventoryScreen.updateDrag(player.getInventory(),
+                Input.isLeftMouseDown(), Input.isRightMouseDown(),
+                Input.getMouseX(), Input.getMouseY(), w, h);
         }
 
         // Furnace screen clicks + mouse tracking

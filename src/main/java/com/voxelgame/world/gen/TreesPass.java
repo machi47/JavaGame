@@ -6,9 +6,11 @@ import com.voxelgame.world.Chunk;
 import com.voxelgame.world.WorldConstants;
 
 /**
- * Tree placement pass. Places oak-style trees on valid grass blocks.
- * Uses density noise and chunk-seeded RNG.
- * Trees are kept away from chunk edges to avoid cross-chunk issues.
+ * Tree placement pass. Uses InfDev 611-style patch-based placement:
+ * - Forest patches determined by noise (not even distribution)
+ * - Multiple tree clusters per chunk in forested areas
+ * - Each patch places 5-12 trees in a cluster
+ * - Trees only on grass, away from water and steep slopes
  */
 public class TreesPass implements GenPipeline.GenerationPass {
 
@@ -19,69 +21,152 @@ public class TreesPass implements GenPipeline.GenerationPass {
         int chunkWorldX = chunk.getPos().worldX();
         int chunkWorldZ = chunk.getPos().worldZ();
 
+        // Determine forest density for this chunk using large-scale noise
+        int chunkCenterX = chunkWorldX + WorldConstants.CHUNK_SIZE / 2;
+        int chunkCenterZ = chunkWorldZ + WorldConstants.CHUNK_SIZE / 2;
+
+        double forestDensity = context.getForestNoise().eval2D(
+            chunkCenterX * 0.005, chunkCenterZ * 0.005);
+
+        // Dense forest: forestDensity > threshold → more patches
+        // Sparse/no trees: forestDensity < -threshold
+        if (forestDensity < -0.3) {
+            // Barren area: very sparse, maybe 1 lone tree
+            if (rng.nextDouble() < 0.15) {
+                placeSingleTree(chunk, context, rng, config, chunkWorldX, chunkWorldZ);
+            }
+            return;
+        }
+
+        // Number of tree patches scales with forest density
+        int numPatches;
+        if (forestDensity > config.forestNoiseThreshold + 0.3) {
+            // Dense forest: 2-4 patches
+            numPatches = 2 + rng.nextInt(3);
+        } else if (forestDensity > config.forestNoiseThreshold) {
+            // Moderate forest: 1-2 patches
+            numPatches = 1 + rng.nextInt(2);
+        } else {
+            // Light scattering: 0-1 patches
+            numPatches = rng.nextDouble() < config.treePatchChance ? 1 : 0;
+        }
+
+        for (int patch = 0; patch < numPatches; patch++) {
+            placePatch(chunk, context, rng, config, chunkWorldX, chunkWorldZ);
+        }
+    }
+
+    /**
+     * Place a patch of trees (cluster) within the chunk.
+     * InfDev style: pick a center, then attempt to place several trees nearby.
+     */
+    private void placePatch(Chunk chunk, GenContext context, RNG rng,
+                            GenConfig config, int chunkWorldX, int chunkWorldZ) {
         int margin = config.treeEdgeMargin;
+        int usableSize = WorldConstants.CHUNK_SIZE - margin * 2;
+        if (usableSize <= 0) return;
 
-        for (int lx = margin; lx < WorldConstants.CHUNK_SIZE - margin; lx++) {
-            for (int lz = margin; lz < WorldConstants.CHUNK_SIZE - margin; lz++) {
-                int worldX = chunkWorldX + lx;
-                int worldZ = chunkWorldZ + lz;
+        // Patch center (local coordinates)
+        int centerLX = margin + rng.nextInt(usableSize);
+        int centerLZ = margin + rng.nextInt(usableSize);
 
-                // Use density noise to create forested and clear areas
-                double density = context.getTreeDensityNoise().eval2D(
-                    worldX * 0.01, worldZ * 0.01);
-                // Remap from [-1,1] to [0, 1] — higher = more trees
-                double treeProbability = (density + 1.0) * 0.5 * config.treeDensity * 3.0;
+        int treesPlaced = 0;
+        int maxTrees = 5 + rng.nextInt(config.treePatchAttempts - 4);
 
-                if (rng.nextDouble() > treeProbability) continue;
+        for (int attempt = 0; attempt < config.treePatchAttempts * 2 && treesPlaced < maxTrees; attempt++) {
+            // Random offset from patch center
+            int lx = centerLX + rng.nextInt(config.treePatchSpread * 2 + 1) - config.treePatchSpread;
+            int lz = centerLZ + rng.nextInt(config.treePatchSpread * 2 + 1) - config.treePatchSpread;
 
-                // Find the surface height
-                int height = context.getTerrainHeight(worldX, worldZ);
+            // Clamp to safe zone
+            lx = Math.max(margin, Math.min(lx, WorldConstants.CHUNK_SIZE - margin - 1));
+            lz = Math.max(margin, Math.min(lz, WorldConstants.CHUNK_SIZE - margin - 1));
 
-                // Must be at least 3 blocks above sea level (no beach trees)
-                if (height <= WorldConstants.SEA_LEVEL + 2) continue;
-
-                // Check that the surface block is grass (not sand, stone, water, etc.)
-                int surfBlock = chunk.getBlock(lx, height, lz);
-                if (surfBlock != Blocks.GRASS.id()) continue;
-
-                // Extra check: no sand/water neighbors (no trees on beach edges)
-                boolean nearBeach = false;
-                for (int dx = -1; dx <= 1 && !nearBeach; dx++) {
-                    for (int dz2 = -1; dz2 <= 1 && !nearBeach; dz2++) {
-                        int nh = context.getTerrainHeight(worldX + dx, worldZ + dz2);
-                        if (nh <= WorldConstants.SEA_LEVEL + 1) nearBeach = true;
-                    }
-                }
-                if (nearBeach) continue;
-
-                // Check slope — look at neighboring terrain heights
-                int hN = context.getTerrainHeight(worldX, worldZ - 1);
-                int hS = context.getTerrainHeight(worldX, worldZ + 1);
-                int hE = context.getTerrainHeight(worldX + 1, worldZ);
-                int hW = context.getTerrainHeight(worldX - 1, worldZ);
-
-                int maxSlope = Math.max(
-                    Math.max(Math.abs(height - hN), Math.abs(height - hS)),
-                    Math.max(Math.abs(height - hE), Math.abs(height - hW))
-                );
-
-                if (maxSlope > config.treeSlopeMax) continue;
-
-                // Generate tree
-                int trunkHeight = config.treeMinTrunk + rng.nextInt(
-                    config.treeMaxTrunk - config.treeMinTrunk + 1);
-
-                placeTree(chunk, lx, height + 1, lz, trunkHeight);
+            if (tryPlaceTree(chunk, context, rng, config, chunkWorldX, chunkWorldZ, lx, lz)) {
+                treesPlaced++;
             }
         }
     }
 
     /**
+     * Place a single lone tree somewhere in the chunk.
+     */
+    private void placeSingleTree(Chunk chunk, GenContext context, RNG rng,
+                                  GenConfig config, int chunkWorldX, int chunkWorldZ) {
+        int margin = config.treeEdgeMargin;
+        int usableSize = WorldConstants.CHUNK_SIZE - margin * 2;
+        if (usableSize <= 0) return;
+
+        for (int attempt = 0; attempt < 5; attempt++) {
+            int lx = margin + rng.nextInt(usableSize);
+            int lz = margin + rng.nextInt(usableSize);
+            if (tryPlaceTree(chunk, context, rng, config, chunkWorldX, chunkWorldZ, lx, lz)) {
+                return;
+            }
+        }
+    }
+
+    /**
+     * Try to place a tree at the given local position. Returns true if successful.
+     */
+    private boolean tryPlaceTree(Chunk chunk, GenContext context, RNG rng,
+                                  GenConfig config, int chunkWorldX, int chunkWorldZ,
+                                  int lx, int lz) {
+        int worldX = chunkWorldX + lx;
+        int worldZ = chunkWorldZ + lz;
+
+        // Find the surface height
+        int height = context.getTerrainHeight(worldX, worldZ);
+
+        // Must be at least 3 blocks above sea level (no beach trees)
+        if (height <= WorldConstants.SEA_LEVEL + 2) return false;
+
+        // Check that the surface block is grass
+        int surfBlock = chunk.getBlock(lx, height, lz);
+        if (surfBlock != Blocks.GRASS.id()) return false;
+
+        // Check for nearby water/sand (no trees on beach edges)
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz2 = -1; dz2 <= 1; dz2++) {
+                int nh = context.getTerrainHeight(worldX + dx, worldZ + dz2);
+                if (nh <= WorldConstants.SEA_LEVEL + 1) return false;
+            }
+        }
+
+        // Check slope
+        int hN = context.getTerrainHeight(worldX, worldZ - 1);
+        int hS = context.getTerrainHeight(worldX, worldZ + 1);
+        int hE = context.getTerrainHeight(worldX + 1, worldZ);
+        int hW = context.getTerrainHeight(worldX - 1, worldZ);
+
+        int maxSlope = Math.max(
+            Math.max(Math.abs(height - hN), Math.abs(height - hS)),
+            Math.max(Math.abs(height - hE), Math.abs(height - hW))
+        );
+
+        if (maxSlope > config.treeSlopeMax) return false;
+
+        // Check that space above is clear (at least trunk height + 2)
+        int trunkHeight = config.treeMinTrunk + rng.nextInt(
+            config.treeMaxTrunk - config.treeMinTrunk + 1);
+        int topY = height + 1 + trunkHeight + 3;
+        if (topY >= WorldConstants.WORLD_HEIGHT) return false;
+
+        for (int y = height + 1; y <= height + 1 + trunkHeight; y++) {
+            if (chunk.getBlock(lx, y, lz) != Blocks.AIR.id()) return false;
+        }
+
+        // Place the tree
+        placeTree(chunk, lx, height + 1, lz, trunkHeight);
+        return true;
+    }
+
+    /**
      * Place a simple oak tree at the given local position.
      * Trunk of LOG blocks, topped with a LEAVES canopy.
+     * Classic tree shape: 4 layers of leaves.
      */
     private void placeTree(Chunk chunk, int x, int baseY, int z, int trunkHeight) {
-        // Ensure tree fits in world height
         int topY = baseY + trunkHeight;
         if (topY + 3 >= WorldConstants.WORLD_HEIGHT) return;
 
@@ -90,35 +175,33 @@ public class TreesPass implements GenPipeline.GenerationPass {
             chunk.setBlock(x, y, z, Blocks.LOG.id());
         }
 
-        // Place leaf canopy — 3 layers
-        // Bottom layer: 5x5 with corners removed (largest)
-        int leafBase = topY - 1; // leaves start overlapping top of trunk
+        // Place leaf canopy — Classic InfDev style (4 layers)
+        int leafBase = topY - 1;
+
+        // Bottom two layers: 5x5 with corners randomly removed
         placeLeafLayer(chunk, x, leafBase, z, 2, true);
-        // Middle layer: 5x5 with corners removed
         placeLeafLayer(chunk, x, leafBase + 1, z, 2, true);
+
         // Top layer: 3x3 cross
         placeLeafLayer(chunk, x, leafBase + 2, z, 1, false);
+
         // Tip: single block on top
         setLeaf(chunk, x, leafBase + 3, z);
     }
 
     /**
      * Place a horizontal layer of leaves centered at (cx, y, cz).
-     * @param radius 1 = 3x3, 2 = 5x5
-     * @param removeCorners if true, skip the 4 corners of the square
      */
     private void placeLeafLayer(Chunk chunk, int cx, int y, int cz,
                                 int radius, boolean removeCorners) {
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
-                // Skip corners for more natural look
                 if (removeCorners && Math.abs(dx) == radius && Math.abs(dz) == radius) {
                     continue;
                 }
 
                 int lx = cx + dx;
                 int lz = cz + dz;
-
                 setLeaf(chunk, lx, y, lz);
             }
         }
@@ -132,7 +215,6 @@ public class TreesPass implements GenPipeline.GenerationPass {
             return;
         }
 
-        // Only place leaves in air (don't overwrite trunk or solid blocks)
         if (chunk.getBlock(lx, y, lz) == Blocks.AIR.id()) {
             chunk.setBlock(lx, y, lz, Blocks.LEAVES.id());
         }

@@ -1,11 +1,14 @@
 package com.voxelgame.ui;
 
 import com.voxelgame.render.Shader;
+import com.voxelgame.render.TextureAtlas;
 import com.voxelgame.sim.BlockBreakProgress;
 import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.Inventory;
 import com.voxelgame.sim.Player;
 import com.voxelgame.sim.ToolItem;
+import com.voxelgame.world.Block;
+import com.voxelgame.world.Blocks;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
 
@@ -97,9 +100,11 @@ public class Hud {
     };
 
     private Shader uiShader;
+    private Shader texShader;
     private int crosshairVao, crosshairVbo;
     private int quadVao, quadVbo;
     private BitmapFont font;
+    private TextureAtlas atlas;
 
     // Breaking progress (0..1, set externally by GameLoop)
     private float breakProgress = 0;
@@ -108,6 +113,7 @@ public class Hud {
 
     public void init() {
         uiShader = new Shader("shaders/ui.vert", "shaders/ui.frag");
+        texShader = new Shader("shaders/ui_tex.vert", "shaders/ui_tex.frag");
         buildCrosshairVAO();
         buildQuadVAO();
     }
@@ -115,6 +121,11 @@ public class Hud {
     /** Set the BitmapFont for rendering item counts. */
     public void setFont(BitmapFont font) {
         this.font = font;
+    }
+
+    /** Set the texture atlas for rendering item textures. */
+    public void setAtlas(TextureAtlas atlas) {
+        this.atlas = atlas;
     }
 
     /** Set the current block-breaking progress (0 = not breaking, 0..1 = progress). */
@@ -253,12 +264,12 @@ public class Hud {
             // Block preview from inventory
             Inventory.ItemStack stack = inventory.getSlot(i);
             int bid = (stack != null) ? stack.getBlockId() : 0;
-            if (bid > 0 && bid < BLOCK_COLORS.length && stack != null && !stack.isEmpty()) {
-                float[] c = BLOCK_COLORS[bid];
+            if (bid > 0 && stack != null && !stack.isEmpty()) {
                 float off = (SLOT_SIZE - PREVIEW_SIZE) / 2f;
 
                 if (stack.hasDurability()) {
                     // Tool: render with distinctive shape
+                    float[] c = (bid < BLOCK_COLORS.length) ? BLOCK_COLORS[bid] : new float[]{0.5f,0.5f,0.5f,1.0f};
                     float headH = PREVIEW_SIZE * 0.5f;
                     float handleW = PREVIEW_SIZE * 0.25f;
                     float handleH = PREVIEW_SIZE * 0.5f;
@@ -274,7 +285,35 @@ public class Hud {
                         fillRect(sx + 2, y0 + 2, (SLOT_SIZE - 4) * durFrac, barH, dr, dg, 0.2f, 0.9f);
                     }
                 } else {
-                    fillRect(sx + off, y0 + off, PREVIEW_SIZE, PREVIEW_SIZE, c[0], c[1], c[2], c[3]);
+                    // Try textured rendering with atlas
+                    Block block = Blocks.get(bid);
+                    int tileIndex = block.getTextureIndex(0);
+                    boolean renderedTexture = false;
+
+                    if (atlas != null && tileIndex > 0) {
+                        float[] uv = atlas.getUV(tileIndex);
+                        texShader.bind();
+                        glBindVertexArray(quadVao);
+                        atlas.bind(0);
+                        texShader.setInt("uTexture", 0);
+                        texShader.setVec4("uUVRect", uv[0], uv[1], uv[2], uv[3]);
+                        setProjectionTex(new Matrix4f().ortho(
+                            -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
+                            -(y0 + off) / PREVIEW_SIZE, (sh - y0 - off) / PREVIEW_SIZE,
+                            -1, 1));
+                        glDrawArrays(GL_TRIANGLES, 0, 6);
+                        texShader.unbind();
+                        renderedTexture = true;
+                        // Re-bind ui shader for subsequent drawing
+                        uiShader.bind();
+                        glBindVertexArray(quadVao);
+                    }
+
+                    if (!renderedTexture && bid < BLOCK_COLORS.length) {
+                        float[] c = BLOCK_COLORS[bid];
+                        fillRect(sx + off, y0 + off, PREVIEW_SIZE, PREVIEW_SIZE, c[0], c[1], c[2], c[3]);
+                    }
+
                     if (player.getGameMode() != GameMode.CREATIVE && stack.getCount() < Inventory.MAX_STACK) {
                         float countFrac = (float) stack.getCount() / Inventory.MAX_STACK;
                         float barH = 3.0f;
@@ -443,11 +482,22 @@ public class Hud {
         }
     }
 
+    private void setProjectionTex(Matrix4f proj) {
+        try (MemoryStack stk = MemoryStack.stackPush()) {
+            FloatBuffer fb = stk.mallocFloat(16);
+            proj.get(fb);
+            glUniformMatrix4fv(
+                glGetUniformLocation(texShader.getProgramId(), "uProjection"),
+                false, fb);
+        }
+    }
+
     public void cleanup() {
         if (crosshairVbo != 0) glDeleteBuffers(crosshairVbo);
         if (crosshairVao != 0) glDeleteVertexArrays(crosshairVao);
         if (quadVbo != 0) glDeleteBuffers(quadVbo);
         if (quadVao != 0) glDeleteVertexArrays(quadVao);
         if (uiShader != null) uiShader.cleanup();
+        if (texShader != null) texShader.cleanup();
     }
 }
