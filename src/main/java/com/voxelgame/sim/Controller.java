@@ -443,28 +443,12 @@ public class Controller {
             player.setDifficulty(next);
         }
 
-        // ESC = toggle cursor lock / close inventory
-        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
-            if (inventoryScreen != null && inventoryScreen.isOpen()) {
-                // Close inventory first
-                inventoryScreen.close();
-                Input.lockCursor();
-            } else if (Input.isCursorLocked()) {
-                Input.unlockCursor();
-            } else {
-                Input.lockCursor();
-            }
-        }
+        // ESC handling moved to GameLoop (pause menu / screen system)
+        // Inventory close on ESC is handled by GameLoop.updateAndRenderGame()
     }
 
-    /** When dead — only process ESC key. */
+    /** When dead — ESC is handled by GameLoop pause menu. */
     private void handleEscapeOnly() {
-        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
-            if (Input.isCursorLocked()) {
-                Input.unlockCursor();
-            } else {
-                Input.lockCursor();
-            }
-        }
+        // ESC handling moved to GameLoop
     }
 }

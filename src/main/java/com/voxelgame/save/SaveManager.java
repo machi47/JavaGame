@@ -11,6 +11,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Top-level save/load coordinator. Manages the save directory,
@@ -181,5 +183,78 @@ public class SaveManager {
      */
     public void close() {
         regionCache.clear();
+    }
+
+    // ---- Static utilities for world management ----
+
+    /**
+     * Get the root saves directory (~/.voxelgame/saves/).
+     */
+    public static Path getSavesRoot() {
+        String home = System.getProperty("user.home");
+        return Paths.get(home, ".voxelgame", "saves");
+    }
+
+    /**
+     * List all saved world folder names (directories containing world.dat).
+     */
+    public static List<String> listWorlds() {
+        List<String> result = new ArrayList<>();
+        Path savesRoot = getSavesRoot();
+        if (!savesRoot.toFile().exists()) return result;
+
+        java.io.File[] dirs = savesRoot.toFile().listFiles(java.io.File::isDirectory);
+        if (dirs == null) return result;
+
+        for (java.io.File dir : dirs) {
+            if (new java.io.File(dir, "world.dat").exists()) {
+                result.add(dir.getName());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Delete a world by folder name. Recursively removes the entire directory.
+     * @return true if successfully deleted
+     */
+    public static boolean deleteWorld(String folderName) {
+        Path worldDir = getSavesRoot().resolve(folderName);
+        if (!worldDir.toFile().exists()) return false;
+
+        try {
+            java.nio.file.Files.walk(worldDir)
+                .sorted(java.util.Comparator.reverseOrder())
+                .forEach(p -> {
+                    try { java.nio.file.Files.delete(p); }
+                    catch (IOException e) { /* best effort */ }
+                });
+            return !worldDir.toFile().exists();
+        } catch (IOException e) {
+            LOG.log(Level.WARNING, "Failed to delete world: " + folderName, e);
+            return false;
+        }
+    }
+
+    /**
+     * Generate a sanitized folder name from a display name.
+     * Replaces spaces/special chars with underscores, ensures uniqueness.
+     */
+    public static String toFolderName(String displayName) {
+        String base = displayName.trim()
+            .replaceAll("[^a-zA-Z0-9_\\-]", "_")
+            .replaceAll("_+", "_")
+            .replaceAll("^_|_$", "");
+        if (base.isEmpty()) base = "world";
+
+        // Ensure uniqueness
+        Path savesRoot = getSavesRoot();
+        String candidate = base;
+        int counter = 1;
+        while (savesRoot.resolve(candidate).toFile().exists()) {
+            candidate = base + "_" + counter;
+            counter++;
+        }
+        return candidate;
     }
 }

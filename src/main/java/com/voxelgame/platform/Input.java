@@ -25,6 +25,10 @@ public class Input {
     private static double scrollDX = 0;
     private static double scrollDY = 0;
 
+    // Character input (for text fields)
+    private static char lastCharTyped = 0;
+    private static boolean charTypedThisFrame = false;
+
     // Automation overlay
     private static AutomationController automationController = null;
 
@@ -57,6 +61,13 @@ public class Input {
         glfwSetScrollCallback(handle, (window, xoffset, yoffset) -> {
             scrollDX += xoffset;
             scrollDY += yoffset;
+        });
+
+        glfwSetCharCallback(handle, (window, codepoint) -> {
+            if (codepoint >= 32 && codepoint <= 126) {
+                lastCharTyped = (char) codepoint;
+                charTypedThisFrame = true;
+            }
         });
 
         glfwSetMouseButtonCallback(handle, (window, button, action, mods) -> {
@@ -145,8 +156,17 @@ public class Input {
     public static boolean isLeftMouseDown() { return leftMouseDown; }
     public static boolean isRightMouseDown() { return rightMouseDown; }
 
+    public static double getMouseX() { return mouseX; }
+    public static double getMouseY() { return mouseY; }
+
     public static double getScrollDX() { return scrollDX; }
     public static double getScrollDY() { return scrollDY; }
+
+    /** Returns true if a character was typed this frame. */
+    public static boolean wasCharTyped() { return charTypedThisFrame; }
+
+    /** Get the character typed this frame. Only valid if wasCharTyped() returns true. */
+    public static char getCharTyped() { return lastCharTyped; }
 
     public static void endFrame() {
         mouseDX = 0;
@@ -155,6 +175,8 @@ public class Input {
         scrollDY = 0;
         leftMouseClicked = false;
         rightMouseClicked = false;
+        charTypedThisFrame = false;
+        lastCharTyped = 0;
         java.util.Arrays.fill(keysPressed, false);
         // Clear automation single-frame states
         if (automationController != null) {

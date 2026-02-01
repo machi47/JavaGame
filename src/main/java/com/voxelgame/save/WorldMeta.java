@@ -15,6 +15,7 @@ import java.util.Properties;
 public class WorldMeta {
 
     private long seed;
+    private String worldName = "World";
     private float playerX, playerY, playerZ;
     private float playerYaw, playerPitch;
     private long createdAt;
@@ -40,6 +41,9 @@ public class WorldMeta {
 
     public long getSeed() { return seed; }
     public void setSeed(long seed) { this.seed = seed; }
+
+    public String getWorldName() { return worldName; }
+    public void setWorldName(String name) { this.worldName = name != null ? name : "World"; }
 
     public float getPlayerX() { return playerX; }
     public float getPlayerY() { return playerY; }
@@ -98,6 +102,7 @@ public class WorldMeta {
 
         Properties props = new Properties();
         props.setProperty("seed", Long.toString(seed));
+        props.setProperty("worldName", worldName);
         props.setProperty("playerX", Float.toString(playerX));
         props.setProperty("playerY", Float.toString(playerY));
         props.setProperty("playerZ", Float.toString(playerZ));
@@ -134,13 +139,17 @@ public class WorldMeta {
 
         WorldMeta meta = new WorldMeta();
         meta.seed = Long.parseLong(props.getProperty("seed", "0"));
+        meta.worldName = props.getProperty("worldName", "World");
         meta.playerX = Float.parseFloat(props.getProperty("playerX", "0"));
         meta.playerY = Float.parseFloat(props.getProperty("playerY", "80"));
         meta.playerZ = Float.parseFloat(props.getProperty("playerZ", "0"));
         meta.playerYaw = Float.parseFloat(props.getProperty("playerYaw", "0"));
         meta.playerPitch = Float.parseFloat(props.getProperty("playerPitch", "0"));
-        meta.createdAt = Long.parseLong(props.getProperty("createdAt", "0"));
-        meta.lastPlayedAt = Long.parseLong(props.getProperty("lastPlayedAt", "0"));
+        long now = System.currentTimeMillis();
+        meta.createdAt = Long.parseLong(props.getProperty("createdAt", Long.toString(now)));
+        meta.lastPlayedAt = Long.parseLong(props.getProperty("lastPlayedAt", Long.toString(now)));
+        if (meta.createdAt == 0) meta.createdAt = now;
+        if (meta.lastPlayedAt == 0) meta.lastPlayedAt = now;
 
         // New fields (with backwards-compatible defaults)
         meta.gameMode = GameMode.fromString(props.getProperty("gameMode", "SURVIVAL"));

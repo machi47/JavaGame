@@ -28,7 +28,12 @@ import com.voxelgame.ui.DeathScreen;
 import com.voxelgame.ui.DebugOverlay;
 import com.voxelgame.ui.Hud;
 import com.voxelgame.ui.InventoryScreen;
+import com.voxelgame.ui.MainMenuScreen;
+import com.voxelgame.ui.PauseMenuScreen;
 import com.voxelgame.ui.Screenshot;
+import com.voxelgame.ui.SettingsScreen;
+import com.voxelgame.ui.WorldCreationScreen;
+import com.voxelgame.ui.WorldListScreen;
 import com.voxelgame.world.Block;
 import com.voxelgame.world.Blocks;
 import com.voxelgame.world.ChunkPos;
@@ -44,15 +49,30 @@ import com.voxelgame.world.stream.ChunkManager;
 import java.io.IOException;
 import java.util.Set;
 
+import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL33.*;
 
 /**
  * Game loop integrating all subsystems.
+ * Supports screen states: MAIN_MENU, WORLD_LIST, WORLD_CREATION,
+ * SETTINGS_MENU, IN_GAME, PAUSED, SETTINGS_INGAME.
  */
 public class GameLoop {
 
-    private static final String WORLD_NAME = "default";
     private static final float AUTO_SAVE_INTERVAL = 60.0f; // seconds
+
+    /** Current screen state. */
+    private enum ScreenState {
+        MAIN_MENU,
+        WORLD_LIST,
+        WORLD_CREATION,
+        SETTINGS_MENU,     // settings from main menu
+        IN_GAME,
+        PAUSED,
+        SETTINGS_INGAME    // settings from pause menu
+    }
+
+    private ScreenState screenState = ScreenState.MAIN_MENU;
 
     private Window window;
     private Time time;
@@ -64,9 +84,16 @@ public class GameLoop {
     private Renderer renderer;
     private SaveManager saveManager;
 
-    // UI
-    private Hud hud;
+    // UI screens
     private BitmapFont bitmapFont;
+    private MainMenuScreen mainMenuScreen;
+    private WorldListScreen worldListScreen;
+    private WorldCreationScreen worldCreationScreen;
+    private PauseMenuScreen pauseMenuScreen;
+    private SettingsScreen settingsScreen;
+
+    // In-game UI
+    private Hud hud;
     private DebugOverlay debugOverlay;
     private BlockHighlight blockHighlight;
     private DeathScreen deathScreen;
@@ -75,10 +102,6 @@ public class GameLoop {
     // Survival mechanics
     private BlockBreakProgress blockBreakProgress;
     private ItemEntityManager itemEntityManager;
-
-    // Survival mechanics
-
-    // Item entities
     private ItemEntityRenderer itemEntityRenderer;
 
     // Mob system
@@ -108,6 +131,15 @@ public class GameLoop {
     private float autoTestTimer = 0;
     private int autoTestPhase = 0;
 
+    // Track which world is currently loaded
+    private String currentWorldFolder = null;
+
+    // Track whether game subsystems are initialized
+    private boolean gameInitialized = false;
+
+    // The ScreenState to return to from settings
+    private ScreenState settingsReturnState = ScreenState.MAIN_MENU;
+
     /** Enable automation mode (socket server + optional script). */
     public void setAutomationMode(boolean enabled) { this.automationMode = enabled; }
 
@@ -119,6 +151,14 @@ public class GameLoop {
 
     /** Enable auto-test mode (scripted screenshot sequence, then exit). */
     public void setAutoTestMode(boolean enabled) { this.autoTestMode = enabled; }
+
+    /**
+     * Skip the menu and go directly to a world (legacy / automation mode).
+     * If worldName is null, uses "default".
+     */
+    public void setDirectWorld(String worldName) {
+        this.currentWorldFolder = worldName != null ? worldName : "default";
+    }
 
     public void run() {
         init();
@@ -134,68 +174,172 @@ public class GameLoop {
         time = new Time();
         time.init();
 
+        Input.init(window.getHandle());
+
+        // Initialize shared font
+        bitmapFont = new BitmapFont();
+        bitmapFont.init();
+
+        // Initialize menu screens
+        mainMenuScreen = new MainMenuScreen();
+        mainMenuScreen.init(bitmapFont);
+        mainMenuScreen.setCallback(new MainMenuScreen.MenuCallback() {
+            @Override public void onSingleplayer() { switchToWorldList(); }
+            @Override public void onSettings() { openSettings(ScreenState.MAIN_MENU); }
+            @Override public void onQuit() { window.requestClose(); }
+        });
+
+        worldListScreen = new WorldListScreen();
+        worldListScreen.init(bitmapFont);
+        worldListScreen.setCallback(new WorldListScreen.WorldListCallback() {
+            @Override public void onPlayWorld(String worldName) { loadAndStartWorld(worldName); }
+            @Override public void onCreateNew() { switchToWorldCreation(); }
+            @Override public void onBack() { switchToMainMenu(); }
+        });
+
+        worldCreationScreen = new WorldCreationScreen();
+        worldCreationScreen.init(bitmapFont);
+        worldCreationScreen.setCallback(new WorldCreationScreen.CreationCallback() {
+            @Override
+            public void onCreateWorld(String worldName, GameMode gameMode, Difficulty difficulty,
+                                       String seed, boolean showCoordinates, boolean bonusChest) {
+                createAndStartWorld(worldName, gameMode, difficulty, seed);
+            }
+            @Override public void onCancel() { switchToWorldList(); }
+        });
+
+        pauseMenuScreen = new PauseMenuScreen();
+        pauseMenuScreen.init(bitmapFont);
+        pauseMenuScreen.setCallback(new PauseMenuScreen.PauseCallback() {
+            @Override public void onResume() { resumeGame(); }
+            @Override public void onSettings() { openSettings(ScreenState.PAUSED); }
+            @Override public void onSaveAndQuit() { saveAndQuitToTitle(); }
+            @Override public void onQuitGame() { window.requestClose(); }
+        });
+
+        settingsScreen = new SettingsScreen();
+        settingsScreen.init(bitmapFont);
+        settingsScreen.setCallback(() -> closeSettings());
+
+        // Check if direct world mode was requested (automation/legacy)
+        if (currentWorldFolder != null) {
+            // Skip menu, load world directly
+            loadAndStartWorld(currentWorldFolder);
+            System.out.println("VoxelGame initialized — direct world: " + currentWorldFolder);
+        } else {
+            // Set cursor visible for menu
+            Input.unlockCursor();
+            screenState = ScreenState.MAIN_MENU;
+            System.out.println("VoxelGame initialized — showing main menu");
+        }
+    }
+
+    // ---- Screen switching ----
+
+    private void switchToMainMenu() {
+        screenState = ScreenState.MAIN_MENU;
+        Input.unlockCursor();
+    }
+
+    private void switchToWorldList() {
+        worldListScreen.refreshWorldList();
+        screenState = ScreenState.WORLD_LIST;
+        Input.unlockCursor();
+    }
+
+    private void switchToWorldCreation() {
+        worldCreationScreen.reset();
+        screenState = ScreenState.WORLD_CREATION;
+        Input.unlockCursor();
+    }
+
+    private void openSettings(ScreenState returnTo) {
+        settingsReturnState = returnTo;
+        if (returnTo == ScreenState.MAIN_MENU) {
+            screenState = ScreenState.SETTINGS_MENU;
+        } else {
+            screenState = ScreenState.SETTINGS_INGAME;
+        }
+        Input.unlockCursor();
+    }
+
+    private void closeSettings() {
+        if (settingsReturnState == ScreenState.PAUSED) {
+            screenState = ScreenState.PAUSED;
+            Input.unlockCursor();
+        } else {
+            screenState = ScreenState.MAIN_MENU;
+            Input.unlockCursor();
+        }
+    }
+
+    private void resumeGame() {
+        screenState = ScreenState.IN_GAME;
+        Input.lockCursor();
+    }
+
+    private void pauseGame() {
+        screenState = ScreenState.PAUSED;
+        Input.unlockCursor();
+    }
+
+    // ---- World lifecycle ----
+
+    /**
+     * Create a brand new world and start playing it.
+     */
+    private void createAndStartWorld(String displayName, GameMode gameMode,
+                                      Difficulty difficulty, String seedText) {
+        String folderName = SaveManager.toFolderName(displayName);
+
+        // Generate seed
+        long seed;
+        if (seedText != null && !seedText.isEmpty()) {
+            try {
+                seed = Long.parseLong(seedText);
+            } catch (NumberFormatException e) {
+                seed = seedText.hashCode(); // Use string hash as seed
+            }
+        } else {
+            seed = System.nanoTime();
+        }
+
+        // Initialize game subsystems
+        initGameSubsystems(folderName, seed, gameMode, difficulty, displayName, true);
+    }
+
+    /**
+     * Load an existing world and start playing.
+     */
+    private void loadAndStartWorld(String folderName) {
+        initGameSubsystems(folderName, 0, GameMode.SURVIVAL, Difficulty.NORMAL, null, false);
+    }
+
+    /**
+     * Initialize all game subsystems for a world.
+     */
+    private void initGameSubsystems(String folderName, long seed, GameMode gameMode,
+                                     Difficulty difficulty, String displayName, boolean isNew) {
+        // Clean up any existing game state
+        cleanupGameState();
+
+        currentWorldFolder = folderName;
+        saveManager = new SaveManager(folderName);
+
         player = new Player();
         controller = new Controller(player);
         physics = new Physics();
-
-        Input.init(window.getHandle());
-        Input.lockCursor();
 
         world = new World();
         physics.setWorld(world);
         renderer = new Renderer(world);
         renderer.init();
 
-        // Initialize save system
-        saveManager = new SaveManager(WORLD_NAME);
-
         chunkManager = new ChunkManager(world);
         chunkManager.setSaveManager(saveManager);
 
-        // Load or create world
-        long seed;
-        boolean loadedFromSave = false;
-
-        if (saveManager.worldExists()) {
-            // Load existing world
-            try {
-                WorldMeta meta = saveManager.loadMeta();
-                if (meta != null) {
-                    seed = meta.getSeed();
-                    chunkManager.setSeed(seed);
-                    chunkManager.init(renderer.getAtlas());
-
-                    // Restore player position and rotation
-                    player.getCamera().getPosition().set(
-                        meta.getPlayerX(), meta.getPlayerY(), meta.getPlayerZ()
-                    );
-                    player.getCamera().setYaw(meta.getPlayerYaw());
-                    player.getCamera().setPitch(meta.getPlayerPitch());
-
-                    // Restore game mode, difficulty, spawn point, and health
-                    player.setGameMode(meta.getGameMode());
-                    player.setDifficulty(meta.getDifficulty());
-                    player.setSpawnPoint(meta.getSpawnX(), meta.getSpawnY(), meta.getSpawnZ());
-                    if (!meta.getGameMode().isInvulnerable()) {
-                        player.restoreHealth(meta.getPlayerHealth());
-                    }
-
-                    loadedFromSave = true;
-                    System.out.println("Loaded world '" + WORLD_NAME + "' (seed=" + seed + ")");
-                    System.out.println("  Player position: " +
-                        meta.getPlayerX() + ", " + meta.getPlayerY() + ", " + meta.getPlayerZ());
-                    System.out.println("  Game mode: " + meta.getGameMode() +
-                        "  Difficulty: " + meta.getDifficulty());
-                    System.out.println("  Health: " + meta.getPlayerHealth());
-                }
-            } catch (IOException e) {
-                System.err.println("Failed to load world meta, creating new world: " + e.getMessage());
-            }
-        }
-
-        if (!loadedFromSave) {
+        if (isNew) {
             // Create new world
-            seed = ChunkGenerationWorker.DEFAULT_SEED;
             chunkManager.setSeed(seed);
             chunkManager.init(renderer.getAtlas());
 
@@ -207,45 +351,74 @@ public class GameLoop {
                     (float) spawn.x(), (float) spawn.y(), (float) spawn.z()
                 );
                 player.setSpawnPoint((float) spawn.x(), (float) spawn.y(), (float) spawn.z());
-                System.out.println("New world — Spawn point: " + spawn.x() + ", " + spawn.y() + ", " + spawn.z());
             }
 
-            // Default to survival mode + normal difficulty for new worlds
-            player.setGameMode(GameMode.SURVIVAL);
-            player.setDifficulty(Difficulty.NORMAL);
+            player.setGameMode(gameMode);
+            player.setDifficulty(difficulty);
 
             // Save initial metadata
             try {
                 WorldMeta meta = new WorldMeta(seed);
+                meta.setWorldName(displayName != null ? displayName : "New World");
                 meta.setPlayerPosition(
                     player.getPosition().x, player.getPosition().y, player.getPosition().z
                 );
                 meta.setPlayerRotation(
                     player.getCamera().getYaw(), player.getCamera().getPitch()
                 );
-                meta.setGameMode(player.getGameMode());
-                meta.setDifficulty(player.getDifficulty());
+                meta.setGameMode(gameMode);
+                meta.setDifficulty(difficulty);
                 meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
                 meta.setPlayerHealth(player.getHealth());
                 saveManager.saveMeta(meta);
-                System.out.println("Created new world '" + WORLD_NAME + "' (seed=" + seed + ")");
+                System.out.println("Created new world '" + folderName + "' (seed=" + seed + ")");
             } catch (IOException e) {
                 System.err.println("Failed to save initial world meta: " + e.getMessage());
+            }
+        } else {
+            // Load existing world
+            try {
+                WorldMeta meta = saveManager.loadMeta();
+                if (meta != null) {
+                    seed = meta.getSeed();
+                    chunkManager.setSeed(seed);
+                    chunkManager.init(renderer.getAtlas());
+
+                    player.getCamera().getPosition().set(
+                        meta.getPlayerX(), meta.getPlayerY(), meta.getPlayerZ()
+                    );
+                    player.getCamera().setYaw(meta.getPlayerYaw());
+                    player.getCamera().setPitch(meta.getPlayerPitch());
+                    player.setGameMode(meta.getGameMode());
+                    player.setDifficulty(meta.getDifficulty());
+                    player.setSpawnPoint(meta.getSpawnX(), meta.getSpawnY(), meta.getSpawnZ());
+                    if (!meta.getGameMode().isInvulnerable()) {
+                        player.restoreHealth(meta.getPlayerHealth());
+                    }
+                    System.out.println("Loaded world '" + folderName + "' (seed=" + seed + ")");
+                } else {
+                    // Fallback: treat as new
+                    seed = ChunkGenerationWorker.DEFAULT_SEED;
+                    chunkManager.setSeed(seed);
+                    chunkManager.init(renderer.getAtlas());
+                }
+            } catch (IOException e) {
+                System.err.println("Failed to load world meta: " + e.getMessage());
+                seed = ChunkGenerationWorker.DEFAULT_SEED;
+                chunkManager.setSeed(seed);
+                chunkManager.init(renderer.getAtlas());
             }
         }
 
         // UI
         hud = new Hud();
         hud.init();
-        bitmapFont = new BitmapFont();
-        bitmapFont.init();
         debugOverlay = new DebugOverlay(bitmapFont);
         deathScreen = new DeathScreen(bitmapFont);
         deathScreen.init();
         blockHighlight = new BlockHighlight();
         blockHighlight.init();
 
-        // Inventory screen
         inventoryScreen = new InventoryScreen();
         inventoryScreen.init(bitmapFont);
         controller.setInventoryScreen(inventoryScreen);
@@ -255,7 +428,6 @@ public class GameLoop {
         itemEntityRenderer = new ItemEntityRenderer();
         itemEntityRenderer.init();
 
-        // Mob system
         worldTime = new WorldTime();
         entityManager = new EntityManager();
         mobSpawner = new MobSpawner();
@@ -266,26 +438,91 @@ public class GameLoop {
         chunkManager.update(player);
 
         // Initialize automation if enabled
-        if (automationMode) {
+        if (automationMode && automationController == null) {
             automationController = new AutomationController();
             automationController.start(scriptPath);
-            System.out.println("[Automation] Controller initialized");
         }
 
         // Initialize agent server if enabled
-        if (agentServerMode) {
+        if (agentServerMode && agentServer == null) {
             agentActionQueue = new ActionQueue();
             agentServer = new AgentServer(agentActionQueue);
             controller.setAgentActionQueue(agentActionQueue);
             agentServer.start();
-            System.out.println("[AgentServer] WebSocket server starting on port " + AgentServer.DEFAULT_PORT);
         }
 
-        System.out.println("VoxelGame initialized successfully!");
+        gameInitialized = true;
+        autoSaveTimer = 0;
+
+        // Switch to in-game state
+        screenState = ScreenState.IN_GAME;
+        Input.lockCursor();
+
+        System.out.println("Game started — world: " + folderName);
     }
 
+    /**
+     * Save and quit back to the title screen.
+     */
+    private void saveAndQuitToTitle() {
+        if (gameInitialized) {
+            System.out.println("Saving world before returning to menu...");
+            try {
+                int saved = saveManager.saveAllChunks(world);
+                savePlayerMeta();
+                System.out.println("Saved " + saved + " chunks");
+            } catch (Exception e) {
+                System.err.println("Failed to save: " + e.getMessage());
+            }
+            cleanupGameState();
+        }
+        switchToMainMenu();
+    }
+
+    /**
+     * Clean up all in-game state (to prepare for loading a different world or returning to menu).
+     */
+    private void cleanupGameState() {
+        if (!gameInitialized) return;
+
+        if (chunkManager != null) chunkManager.shutdown();
+        if (saveManager != null) saveManager.close();
+        if (blockHighlight != null) blockHighlight.cleanup();
+        if (deathScreen != null) deathScreen.cleanup();
+        if (inventoryScreen != null) inventoryScreen.cleanup();
+        if (entityRenderer != null) entityRenderer.cleanup();
+        if (itemEntityRenderer != null) itemEntityRenderer.cleanup();
+        if (hud != null) hud.cleanup();
+        if (renderer != null) renderer.cleanup();
+
+        player = null;
+        controller = null;
+        physics = null;
+        world = null;
+        chunkManager = null;
+        renderer = null;
+        saveManager = null;
+        hud = null;
+        debugOverlay = null;
+        blockHighlight = null;
+        deathScreen = null;
+        inventoryScreen = null;
+        blockBreakProgress = null;
+        itemEntityManager = null;
+        itemEntityRenderer = null;
+        worldTime = null;
+        entityManager = null;
+        mobSpawner = null;
+        entityRenderer = null;
+        currentHit = null;
+        currentWorldFolder = null;
+        gameInitialized = false;
+    }
+
+    // ---- Main loop ----
+
     private void loop() {
-        while (!window.shouldClose() && 
+        while (!window.shouldClose() &&
                (automationController == null || !automationController.isQuitRequested())) {
             time.update();
             float dt = time.getDeltaTime();
@@ -296,179 +533,319 @@ public class GameLoop {
                 GLInit.setViewport(window.getWidth(), window.getHeight());
             }
 
-            // ---- Handle debug toggle (F3) ----
-            if (Input.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F3)) {
-                debugOverlay.toggle();
-            }
-
-            // ---- Handle respawn (R key when dead) ----
-            if (player.isDead() && Input.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_R)) {
-                player.respawn();
-                deathScreen.reset();
-                if (!Input.isCursorLocked()) {
-                    Input.lockCursor();
-                }
-            }
-
-            // ---- Update timers ----
-            player.updateDamageFlash(dt);
-            player.updateAttackCooldown(dt);
-            worldTime.update(dt);
-
-            // ---- Track pre-death state for death screen trigger ----
-            boolean wasDead = player.isDead();
-
-            // ---- Update ----
-            controller.update(dt);
-            physics.step(player, dt);
-            chunkManager.update(player);
-
-            // ---- Detect death transition (for death screen reset) ----
-            if (player.isDead() && !wasDead) {
-                deathScreen.reset();
-                if (Input.isCursorLocked()) {
-                    Input.unlockCursor();
-                }
-            }
-
-            // ---- Update item entities ----
-            itemEntityManager.update(dt, world, player, player.getInventory());
-
-            // ---- Update mob entities ----
-            entityManager.update(dt, world, player, itemEntityManager);
-            mobSpawner.update(dt, world, player, entityManager, worldTime);
-
-            // Raycast every frame for block highlight (skip when dead or inventory open)
-            if (!player.isDead() && !controller.isInventoryOpen()) {
-                currentHit = Raycast.cast(
-                    world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
-                );
-                handleBlockInteraction(dt);
-            } else {
-                currentHit = null;
-                controller.resetBreaking();
-                hud.setBreakProgress(0);
-            }
-
-            // ---- Handle inventory mouse clicks ----
-            if (inventoryScreen.isVisible() && Input.isLeftMouseClicked()) {
-                double[] mx = new double[1], my = new double[1];
-                org.lwjgl.glfw.GLFW.glfwGetCursorPos(window.getHandle(), mx, my);
-                inventoryScreen.handleClick(player.getInventory(), mx[0], my[0],
-                    window.getWidth(), window.getHeight());
-            }
-
-            // Broadcast state to connected agents
-            if (agentServer != null) {
-                agentServer.broadcastState(player, world);
-            }
-
-            // ---- Auto-save ----
-            autoSaveTimer += dt;
-            if (autoSaveTimer >= AUTO_SAVE_INTERVAL) {
-                autoSaveTimer = 0;
-                performAutoSave();
-            }
-
-            // ---- Render 3D ----
             int w = window.getWidth();
             int h = window.getHeight();
 
-            // Reset GL state for world rendering
-            glEnable(GL_DEPTH_TEST);
-            glDepthMask(true);
-            glDisable(GL_BLEND);
-            glEnable(GL_CULL_FACE);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
+            // Clear screen
+            glClearColor(0.08f, 0.09f, 0.12f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            renderer.render(player.getCamera(), w, h);
 
-            // ---- Render item entities ----
-            itemEntityRenderer.render(player.getCamera(), w, h, itemEntityManager.getItems());
-
-            // ---- Render mob entities ----
-            entityRenderer.render(player.getCamera(), w, h, entityManager.getEntities());
-
-            // ---- Block highlight ----
-            if (currentHit != null) {
-                blockHighlight.render(player.getCamera(), w, h,
-                    currentHit.x(), currentHit.y(), currentHit.z());
+            switch (screenState) {
+                case MAIN_MENU -> updateAndRenderMainMenu(w, h, dt);
+                case WORLD_LIST -> updateAndRenderWorldList(w, h, dt);
+                case WORLD_CREATION -> updateAndRenderWorldCreation(w, h, dt);
+                case SETTINGS_MENU, SETTINGS_INGAME -> updateAndRenderSettings(w, h, dt);
+                case IN_GAME -> updateAndRenderGame(w, h, dt);
+                case PAUSED -> updateAndRenderPaused(w, h, dt);
             }
 
-            // ---- Render UI overlay (2D) ----
-            glDisable(GL_DEPTH_TEST);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDisable(GL_CULL_FACE);
-
-            hud.render(w, h, player);
-            debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting(),
-                    itemEntityManager.getItemCount(), entityManager.getEntityCount(),
-                    worldTime.getTimeString());
-
-            // ---- Inventory screen (on top of HUD) ----
-            if (inventoryScreen.isVisible()) {
-                inventoryScreen.render(w, h, player.getInventory());
-            }
-
-            // ---- Death screen (on top of everything) ----
-            if (player.isDead()) {
-                deathScreen.render(w, h, dt);
-            }
-
-            // ---- Screenshot (F2) ----
-            if (Input.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F2)) {
-                Screenshot.capture(w, h);
-            }
-
-            // ---- Auto-test mode (scripted screenshots) ----
-            if (autoTestMode) {
-                autoTestTimer += dt;
-                switch (autoTestPhase) {
-                    case 0:
-                        if (autoTestTimer > 3.0f) { autoTestPhase = 1; autoTestTimer = 0; }
-                        break;
-                    case 1:
-                        Screenshot.capture(w, h);
-                        autoTestPhase = 2; autoTestTimer = 0;
-                        break;
-                    case 2:
-                        if (autoTestTimer > 1.0f) {
-                            autoTestPhase = player.isDead() ? 3 : 5;
-                            autoTestTimer = 0;
-                        }
-                        break;
-                    case 3:
-                        Screenshot.capture(w, h);
-                        autoTestPhase = 4; autoTestTimer = 0;
-                        break;
-                    case 4:
-                        if (autoTestTimer > 2.0f) {
-                            player.respawn(); deathScreen.reset();
-                            autoTestPhase = 5; autoTestTimer = 0;
-                        }
-                        break;
-                    case 5:
-                        if (autoTestTimer > 3.0f) {
-                            Screenshot.capture(w, h);
-                            autoTestPhase = 6; autoTestTimer = 0;
-                        }
-                        break;
-                    case 6:
-                        if (autoTestTimer > 1.0f) {
-                            System.out.println("[AutoTest] Test complete, exiting.");
-                            window.requestClose();
-                        }
-                        break;
-                }
-            }
-
-            // ---- End frame ----
             Input.endFrame();
             window.swapBuffers();
         }
     }
+
+    // ---- Menu update/render methods ----
+
+    private void updateAndRenderMainMenu(int w, int h, float dt) {
+        // Update hover
+        double mx = Input.getMouseX();
+        double my = Input.getMouseY();
+        mainMenuScreen.updateHover(mx, my, w, h);
+
+        // Handle mouse click
+        if (Input.isLeftMouseClicked()) {
+            mainMenuScreen.handleClick(mx, my, w, h);
+        }
+
+        // Render
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        mainMenuScreen.render(w, h, dt);
+    }
+
+    private void updateAndRenderWorldList(int w, int h, float dt) {
+        double mx = Input.getMouseX();
+        double my = Input.getMouseY();
+        worldListScreen.updateHover(mx, my, w, h);
+
+        // Handle mouse click
+        if (Input.isLeftMouseClicked()) {
+            worldListScreen.handleClick(mx, my, w, h);
+        }
+
+        // Handle scroll
+        double scrollY = Input.getScrollDY();
+        if (scrollY != 0) {
+            worldListScreen.handleScroll(scrollY);
+        }
+
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            switchToMainMenu();
+            return;
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        worldListScreen.render(w, h, dt);
+    }
+
+    private void updateAndRenderWorldCreation(int w, int h, float dt) {
+        double mx = Input.getMouseX();
+        double my = Input.getMouseY();
+        worldCreationScreen.updateHover(mx, my, w, h);
+
+        // Handle mouse click
+        if (Input.isLeftMouseClicked()) {
+            worldCreationScreen.handleClick(mx, my, w, h);
+        }
+
+        // Handle character input for text fields
+        if (Input.wasCharTyped()) {
+            worldCreationScreen.handleCharTyped(Input.getCharTyped());
+        }
+
+        // Forward key presses to world creation screen
+        for (int key = 0; key < 350; key++) {
+            if (Input.isKeyPressed(key)) {
+                worldCreationScreen.handleKeyPress(key);
+            }
+        }
+
+        // ESC goes back to world list (only if no field focused)
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            if (!worldCreationScreen.hasFocusedField()) {
+                switchToWorldList();
+                return;
+            }
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        worldCreationScreen.render(w, h, dt);
+    }
+
+    private void updateAndRenderSettings(int w, int h, float dt) {
+        double mx = Input.getMouseX();
+        double my = Input.getMouseY();
+        settingsScreen.updateHover(mx, my, w, h);
+
+        // Handle click/drag for sliders
+        if (Input.isLeftMouseClicked()) {
+            settingsScreen.handleClick(mx, my, w, h);
+        }
+        if (Input.isLeftMouseDown()) {
+            settingsScreen.handleDrag(mx, my, w, h);
+        } else {
+            settingsScreen.handleRelease();
+        }
+
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            closeSettings();
+            return;
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        settingsScreen.render(w, h, dt);
+    }
+
+    private void updateAndRenderPaused(int w, int h, float dt) {
+        double mx = Input.getMouseX();
+        double my = Input.getMouseY();
+        pauseMenuScreen.updateHover(mx, my, w, h);
+
+        // Handle mouse click
+        if (Input.isLeftMouseClicked()) {
+            pauseMenuScreen.handleClick(mx, my, w, h);
+        }
+
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            resumeGame();
+            return;
+        }
+
+        // Render game world in background (frozen)
+        renderGameWorld(w, h, 0); // dt=0 means no time update
+
+        // Render pause menu overlay on top
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        pauseMenuScreen.render(w, h, dt);
+    }
+
+    // ---- In-game update + render ----
+
+    private void updateAndRenderGame(int w, int h, float dt) {
+        if (!gameInitialized) return;
+
+        // Handle ESC → pause
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            if (inventoryScreen != null && inventoryScreen.isOpen()) {
+                inventoryScreen.close();
+                Input.lockCursor();
+            } else {
+                pauseGame();
+                return;
+            }
+        }
+
+        // Handle debug toggle (F3)
+        if (Input.isKeyPressed(GLFW_KEY_F3)) {
+            debugOverlay.toggle();
+        }
+
+        // Handle respawn (R key when dead)
+        if (player.isDead() && Input.isKeyPressed(GLFW_KEY_R)) {
+            player.respawn();
+            deathScreen.reset();
+            if (!Input.isCursorLocked()) {
+                Input.lockCursor();
+            }
+        }
+
+        // Update timers
+        player.updateDamageFlash(dt);
+        player.updateAttackCooldown(dt);
+        worldTime.update(dt);
+
+        // Track pre-death state
+        boolean wasDead = player.isDead();
+
+        // Update game
+        controller.update(dt);
+        physics.step(player, dt);
+        chunkManager.update(player);
+
+        // Detect death transition
+        if (player.isDead() && !wasDead) {
+            deathScreen.reset();
+            if (Input.isCursorLocked()) {
+                Input.unlockCursor();
+            }
+        }
+
+        // Update entities
+        itemEntityManager.update(dt, world, player, player.getInventory());
+        entityManager.update(dt, world, player, itemEntityManager);
+        mobSpawner.update(dt, world, player, entityManager, worldTime);
+
+        // Raycast
+        if (!player.isDead() && !controller.isInventoryOpen()) {
+            currentHit = Raycast.cast(
+                world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
+            );
+            handleBlockInteraction(dt);
+        } else {
+            currentHit = null;
+            controller.resetBreaking();
+            hud.setBreakProgress(0);
+        }
+
+        // Inventory clicks
+        if (inventoryScreen.isVisible() && Input.isLeftMouseClicked()) {
+            inventoryScreen.handleClick(player.getInventory(),
+                Input.getMouseX(), Input.getMouseY(), w, h);
+        }
+
+        // Agent state broadcast
+        if (agentServer != null) {
+            agentServer.broadcastState(player, world);
+        }
+
+        // Auto-save
+        autoSaveTimer += dt;
+        if (autoSaveTimer >= AUTO_SAVE_INTERVAL) {
+            autoSaveTimer = 0;
+            performAutoSave();
+        }
+
+        // Render
+        renderGameWorld(w, h, dt);
+
+        // Screenshot (F2)
+        if (Input.isKeyPressed(GLFW_KEY_F2)) {
+            Screenshot.capture(w, h);
+        }
+
+        // Auto-test mode
+        if (autoTestMode) {
+            updateAutoTest(w, h, dt);
+        }
+    }
+
+    /**
+     * Render the 3D game world and all in-game overlays.
+     */
+    private void renderGameWorld(int w, int h, float dt) {
+        if (!gameInitialized) return;
+
+        // 3D rendering
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+        renderer.render(player.getCamera(), w, h);
+
+        // Item entities
+        itemEntityRenderer.render(player.getCamera(), w, h, itemEntityManager.getItems());
+
+        // Mob entities
+        entityRenderer.render(player.getCamera(), w, h, entityManager.getEntities());
+
+        // Block highlight
+        if (currentHit != null) {
+            blockHighlight.render(player.getCamera(), w, h,
+                currentHit.x(), currentHit.y(), currentHit.z());
+        }
+
+        // 2D UI overlay
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_CULL_FACE);
+
+        hud.render(w, h, player);
+        debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting(),
+                itemEntityManager.getItemCount(), entityManager.getEntityCount(),
+                worldTime.getTimeString());
+
+        if (inventoryScreen.isVisible()) {
+            inventoryScreen.render(w, h, player.getInventory());
+        }
+
+        if (player.isDead()) {
+            deathScreen.render(w, h, dt);
+        }
+    }
+
+    // ---- Block interaction (extracted from old loop) ----
 
     private void handleBlockInteraction(float dt) {
         boolean agentAttack = controller.consumeAgentAttack();
@@ -476,7 +853,7 @@ public class GameLoop {
 
         boolean isCreative = player.getGameMode() == GameMode.CREATIVE;
 
-        // ---- Entity Attack (Left Click Press) ----
+        // Entity Attack (Left Click Press)
         boolean leftClickJustPressed = agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked());
         boolean entityHit = false;
 
@@ -485,7 +862,6 @@ public class GameLoop {
                     player.getCamera().getPosition(), player.getCamera().getFront(), 4.0f
             );
             if (hit != null) {
-                // Deal fist damage (1 HP) with knockback
                 float damage = 1.0f;
                 org.joml.Vector3f pPos = player.getPosition();
                 float dx = hit.getX() - pPos.x;
@@ -497,7 +873,6 @@ public class GameLoop {
                 player.resetAttackCooldown();
                 entityHit = true;
 
-                // Reset any in-progress block breaking
                 if (controller.isBreaking()) {
                     controller.resetBreaking();
                     hud.setBreakProgress(0);
@@ -511,7 +886,7 @@ public class GameLoop {
             }
         }
 
-        // ---- Block Breaking (Left Click) — only if no entity was hit ----
+        // Block Breaking (Left Click)
         boolean leftClickHeld = !entityHit && (agentAttack || (Input.isCursorLocked() && Input.isLeftMouseDown()));
         boolean leftClickPressed = !entityHit && (agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked()));
 
@@ -524,7 +899,6 @@ public class GameLoop {
 
             if (block.isBreakable()) {
                 if (isCreative) {
-                    // Creative: instant break, no drops
                     breakBlock(bx, by, bz, blockId, false);
                     controller.resetBreaking();
                     hud.setBreakProgress(0);
@@ -534,7 +908,6 @@ public class GameLoop {
                             "action_attack", true, block.name(), bx, by, bz));
                     }
                 } else {
-                    // Survival: time-based breaking via Controller
                     float breakTime = block.getBreakTime();
                     float progress = controller.updateBreaking(bx, by, bz, breakTime, dt);
                     hud.setBreakProgress(progress);
@@ -552,7 +925,6 @@ public class GameLoop {
                 }
             }
         } else {
-            // Not holding attack or no target — reset breaking
             if (controller.isBreaking()) {
                 controller.resetBreaking();
                 hud.setBreakProgress(0);
@@ -564,7 +936,7 @@ public class GameLoop {
             }
         }
 
-        // ---- Block Placing (Right Click) ----
+        // Block Placing (Right Click)
         boolean rightClick = agentUse || (Input.isCursorLocked() && Input.isRightMouseClicked());
 
         if (rightClick && currentHit != null) {
@@ -600,18 +972,14 @@ public class GameLoop {
         }
     }
 
-    /**
-     * Break a block: remove from world, update lighting, optionally spawn drops.
-     */
     private void breakBlock(int bx, int by, int bz, int blockId, boolean spawnDrops) {
         Block block = Blocks.get(blockId);
 
-        world.setBlock(bx, by, bz, 0); // AIR
+        world.setBlock(bx, by, bz, 0);
         Set<ChunkPos> affected = Lighting.onBlockRemoved(world, bx, by, bz);
         chunkManager.rebuildMeshAt(bx, by, bz);
         chunkManager.rebuildChunks(affected);
 
-        // Spawn item drop in survival mode
         if (spawnDrops) {
             int dropId = block.getDrop();
             if (dropId > 0) {
@@ -619,6 +987,51 @@ public class GameLoop {
             }
         }
     }
+
+    // ---- Auto-test ----
+
+    private void updateAutoTest(int w, int h, float dt) {
+        autoTestTimer += dt;
+        switch (autoTestPhase) {
+            case 0:
+                if (autoTestTimer > 3.0f) { autoTestPhase = 1; autoTestTimer = 0; }
+                break;
+            case 1:
+                Screenshot.capture(w, h);
+                autoTestPhase = 2; autoTestTimer = 0;
+                break;
+            case 2:
+                if (autoTestTimer > 1.0f) {
+                    autoTestPhase = player.isDead() ? 3 : 5;
+                    autoTestTimer = 0;
+                }
+                break;
+            case 3:
+                Screenshot.capture(w, h);
+                autoTestPhase = 4; autoTestTimer = 0;
+                break;
+            case 4:
+                if (autoTestTimer > 2.0f) {
+                    player.respawn(); deathScreen.reset();
+                    autoTestPhase = 5; autoTestTimer = 0;
+                }
+                break;
+            case 5:
+                if (autoTestTimer > 3.0f) {
+                    Screenshot.capture(w, h);
+                    autoTestPhase = 6; autoTestTimer = 0;
+                }
+                break;
+            case 6:
+                if (autoTestTimer > 1.0f) {
+                    System.out.println("[AutoTest] Test complete, exiting.");
+                    window.requestClose();
+                }
+                break;
+        }
+    }
+
+    // ---- Save helpers ----
 
     private void performAutoSave() {
         try {
@@ -655,29 +1068,34 @@ public class GameLoop {
         }
     }
 
+    // ---- Cleanup ----
+
     private void cleanup() {
         if (agentServer != null) agentServer.shutdown();
         if (automationController != null) automationController.stop();
 
-        System.out.println("Saving world on exit...");
-        try {
-            int saved = saveManager.saveAllChunks(world);
-            savePlayerMeta();
-            System.out.println("Saved " + saved + " chunks on exit");
-        } catch (Exception e) {
-            System.err.println("Failed to save on exit: " + e.getMessage());
+        // Save if currently in-game
+        if (gameInitialized && saveManager != null) {
+            System.out.println("Saving world on exit...");
+            try {
+                int saved = saveManager.saveAllChunks(world);
+                savePlayerMeta();
+                System.out.println("Saved " + saved + " chunks on exit");
+            } catch (Exception e) {
+                System.err.println("Failed to save on exit: " + e.getMessage());
+            }
         }
-        saveManager.close();
 
-        chunkManager.shutdown();
-        if (blockHighlight != null) blockHighlight.cleanup();
-        if (deathScreen != null) deathScreen.cleanup();
-        if (inventoryScreen != null) inventoryScreen.cleanup();
-        if (entityRenderer != null) entityRenderer.cleanup();
-        if (itemEntityRenderer != null) itemEntityRenderer.cleanup();
+        cleanupGameState();
+
+        // Cleanup menu screens
+        if (mainMenuScreen != null) mainMenuScreen.cleanup();
+        if (worldListScreen != null) worldListScreen.cleanup();
+        if (worldCreationScreen != null) worldCreationScreen.cleanup();
+        if (pauseMenuScreen != null) pauseMenuScreen.cleanup();
+        if (settingsScreen != null) settingsScreen.cleanup();
         if (bitmapFont != null) bitmapFont.cleanup();
-        if (hud != null) hud.cleanup();
-        renderer.cleanup();
+
         window.destroy();
     }
 

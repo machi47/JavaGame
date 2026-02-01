@@ -6,10 +6,11 @@ import com.voxelgame.core.GameLoop;
  * Entry point for VoxelGame.
  * <p>
  * Usage:
- *   java -jar voxelgame.jar                          # normal mode
- *   java -jar voxelgame.jar --automation              # automation mode (socket server on :25565)
- *   java -jar voxelgame.jar --automation --script demo-script.txt  # run script + socket
- *   java -jar voxelgame.jar --agent-server            # agent interface (WebSocket on :25566)
+ *   java -jar voxelgame.jar                          # start at main menu
+ *   java -jar voxelgame.jar --direct [world]          # skip menu, load world directly
+ *   java -jar voxelgame.jar --automation              # automation mode (direct to default world)
+ *   java -jar voxelgame.jar --automation --script demo-script.txt
+ *   java -jar voxelgame.jar --agent-server            # agent interface (direct to default world)
  */
 public class Main {
     public static void main(String[] args) {
@@ -18,6 +19,8 @@ public class Main {
         boolean automationMode = false;
         boolean agentServerMode = false;
         boolean autoTestMode = false;
+        boolean directMode = false;
+        String directWorldName = null;
         String scriptPath = null;
 
         // Parse command-line arguments
@@ -26,6 +29,13 @@ public class Main {
                 case "--automation" -> automationMode = true;
                 case "--agent-server" -> agentServerMode = true;
                 case "--auto-test" -> autoTestMode = true;
+                case "--direct" -> {
+                    directMode = true;
+                    // Optional world name after --direct
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        directWorldName = args[++i];
+                    }
+                }
                 case "--script" -> {
                     if (i + 1 < args.length) {
                         scriptPath = args[++i];
@@ -39,27 +49,12 @@ public class Main {
                     System.out.println("Usage: java -jar voxelgame.jar [options]");
                     System.out.println();
                     System.out.println("Options:");
+                    System.out.println("  --direct [name]     Skip main menu, load world directly (default: 'default')");
                     System.out.println("  --automation        Enable automation mode (socket server on localhost:25565)");
                     System.out.println("  --agent-server      Enable AI agent interface (WebSocket on localhost:25566)");
                     System.out.println("  --script <file>     Run automation script (implies --automation)");
+                    System.out.println("  --auto-test         Automated screenshot test sequence");
                     System.out.println("  --help, -h          Show this help message");
-                    System.out.println();
-                    System.out.println("Automation Protocol:");
-                    System.out.println("  key:<name>:press    Press and release a key");
-                    System.out.println("  key:<name>:down     Hold a key down");
-                    System.out.println("  key:<name>:up       Release a key");
-                    System.out.println("  mouse:move:<dx>:<dy> Inject mouse movement");
-                    System.out.println("  mouse:click:left    Left mouse click");
-                    System.out.println("  mouse:click:right   Right mouse click");
-                    System.out.println("  sleep:<ms>          Wait milliseconds");
-                    System.out.println("  quit                Request shutdown");
-                    System.out.println();
-                    System.out.println("Agent Protocol (WebSocket JSON):");
-                    System.out.println("  Connect to ws://localhost:25566");
-                    System.out.println("  Server sends: hello (handshake), state (per-tick)");
-                    System.out.println("  Client sends: action_look, action_move, action_jump, etc.");
-                    System.out.println();
-                    System.out.println("Key names: W,A,S,D,F,SPACE,SHIFT,CTRL,ESCAPE,F3,1-9,UP,DOWN,LEFT,RIGHT");
                     System.exit(0);
                 }
                 default -> System.err.println("Unknown argument: " + args[i]);
@@ -69,6 +64,11 @@ public class Main {
         // --script implies --automation
         if (scriptPath != null) {
             automationMode = true;
+        }
+
+        // Automation and agent-server modes imply direct mode
+        if (automationMode || agentServerMode || autoTestMode) {
+            directMode = true;
         }
 
         if (automationMode) {
@@ -85,6 +85,12 @@ public class Main {
         loop.setAgentServerMode(agentServerMode);
         loop.setAutoTestMode(autoTestMode);
         loop.setScriptPath(scriptPath);
+
+        // Direct mode skips the menu
+        if (directMode) {
+            loop.setDirectWorld(directWorldName);
+        }
+
         loop.run();
     }
 }
