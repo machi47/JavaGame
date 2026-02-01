@@ -6,6 +6,7 @@ import com.voxelgame.input.AutomationController;
 import com.voxelgame.platform.Input;
 import com.voxelgame.platform.Window;
 import com.voxelgame.render.BlockHighlight;
+import com.voxelgame.render.EntityRenderer;
 import com.voxelgame.render.GLInit;
 import com.voxelgame.render.ItemEntityRenderer;
 import com.voxelgame.render.Renderer;
@@ -14,9 +15,12 @@ import com.voxelgame.save.WorldMeta;
 import com.voxelgame.sim.BlockBreakProgress;
 import com.voxelgame.sim.Controller;
 import com.voxelgame.sim.Difficulty;
+import com.voxelgame.sim.Entity;
+import com.voxelgame.sim.EntityManager;
 import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.ItemEntity;
 import com.voxelgame.sim.ItemEntityManager;
+import com.voxelgame.sim.MobSpawner;
 import com.voxelgame.sim.Physics;
 import com.voxelgame.sim.Player;
 import com.voxelgame.ui.BitmapFont;
@@ -31,6 +35,7 @@ import com.voxelgame.world.ChunkPos;
 import com.voxelgame.world.Lighting;
 import com.voxelgame.world.Raycast;
 import com.voxelgame.world.World;
+import com.voxelgame.world.WorldTime;
 import com.voxelgame.world.gen.GenPipeline;
 import com.voxelgame.world.gen.SpawnPointFinder;
 import com.voxelgame.world.stream.ChunkGenerationWorker;
@@ -75,6 +80,12 @@ public class GameLoop {
 
     // Item entities
     private ItemEntityRenderer itemEntityRenderer;
+
+    // Mob system
+    private WorldTime worldTime;
+    private EntityManager entityManager;
+    private MobSpawner mobSpawner;
+    private EntityRenderer entityRenderer;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -244,6 +255,13 @@ public class GameLoop {
         itemEntityRenderer = new ItemEntityRenderer();
         itemEntityRenderer.init();
 
+        // Mob system
+        worldTime = new WorldTime();
+        entityManager = new EntityManager();
+        mobSpawner = new MobSpawner();
+        entityRenderer = new EntityRenderer();
+        entityRenderer.init();
+
         // Initial chunk load
         chunkManager.update(player);
 
@@ -292,8 +310,10 @@ public class GameLoop {
                 }
             }
 
-            // ---- Update damage flash ----
+            // ---- Update timers ----
             player.updateDamageFlash(dt);
+            player.updateAttackCooldown(dt);
+            worldTime.update(dt);
 
             // ---- Track pre-death state for death screen trigger ----
             boolean wasDead = player.isDead();
@@ -313,6 +333,10 @@ public class GameLoop {
 
             // ---- Update item entities ----
             itemEntityManager.update(dt, world, player, player.getInventory());
+
+            // ---- Update mob entities ----
+            entityManager.update(dt, world, player, itemEntityManager);
+            mobSpawner.update(dt, world, player, entityManager, worldTime);
 
             // Raycast every frame for block highlight (skip when dead or inventory open)
             if (!player.isDead() && !controller.isInventoryOpen()) {
@@ -363,6 +387,9 @@ public class GameLoop {
             // ---- Render item entities ----
             itemEntityRenderer.render(player.getCamera(), w, h, itemEntityManager.getItems());
 
+            // ---- Render mob entities ----
+            entityRenderer.render(player.getCamera(), w, h, entityManager.getEntities());
+
             // ---- Block highlight ----
             if (currentHit != null) {
                 blockHighlight.render(player.getCamera(), w, h,
@@ -376,7 +403,9 @@ public class GameLoop {
             glDisable(GL_CULL_FACE);
 
             hud.render(w, h, player);
-            debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting());
+            debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting(),
+                    itemEntityManager.getItemCount(), entityManager.getEntityCount(),
+                    worldTime.getTimeString());
 
             // ---- Inventory screen (on top of HUD) ----
             if (inventoryScreen.isVisible()) {
@@ -447,9 +476,44 @@ public class GameLoop {
 
         boolean isCreative = player.getGameMode() == GameMode.CREATIVE;
 
-        // ---- Block Breaking (Left Click) ----
-        boolean leftClickHeld = agentAttack || (Input.isCursorLocked() && Input.isLeftMouseDown());
-        boolean leftClickPressed = agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked());
+        // ---- Entity Attack (Left Click Press) ----
+        boolean leftClickJustPressed = agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked());
+        boolean entityHit = false;
+
+        if (leftClickJustPressed && player.canAttack() && entityManager != null) {
+            Entity hit = entityManager.raycastEntity(
+                    player.getCamera().getPosition(), player.getCamera().getFront(), 4.0f
+            );
+            if (hit != null) {
+                // Deal fist damage (1 HP) with knockback
+                float damage = 1.0f;
+                org.joml.Vector3f pPos = player.getPosition();
+                float dx = hit.getX() - pPos.x;
+                float dz = hit.getZ() - pPos.z;
+                float len = (float) Math.sqrt(dx * dx + dz * dz);
+                if (len > 0.001f) { dx /= len; dz /= len; }
+                float knockback = 6.0f;
+                hit.damage(damage, dx * knockback, dz * knockback);
+                player.resetAttackCooldown();
+                entityHit = true;
+
+                // Reset any in-progress block breaking
+                if (controller.isBreaking()) {
+                    controller.resetBreaking();
+                    hud.setBreakProgress(0);
+                }
+
+                if (agentAttack && agentActionQueue != null) {
+                    agentActionQueue.setLastResult(new ActionQueue.ActionResult(
+                            "action_attack", true, hit.getType().name().toLowerCase(),
+                            (int) hit.getX(), (int) hit.getY(), (int) hit.getZ()));
+                }
+            }
+        }
+
+        // ---- Block Breaking (Left Click) — only if no entity was hit ----
+        boolean leftClickHeld = !entityHit && (agentAttack || (Input.isCursorLocked() && Input.isLeftMouseDown()));
+        boolean leftClickPressed = !entityHit && (agentAttack || (Input.isCursorLocked() && Input.isLeftMouseClicked()));
 
         if (currentHit != null && (isCreative ? leftClickPressed : leftClickHeld)) {
             int bx = currentHit.x();
@@ -609,6 +673,7 @@ public class GameLoop {
         if (blockHighlight != null) blockHighlight.cleanup();
         if (deathScreen != null) deathScreen.cleanup();
         if (inventoryScreen != null) inventoryScreen.cleanup();
+        if (entityRenderer != null) entityRenderer.cleanup();
         if (itemEntityRenderer != null) itemEntityRenderer.cleanup();
         if (bitmapFont != null) bitmapFont.cleanup();
         if (hud != null) hud.cleanup();

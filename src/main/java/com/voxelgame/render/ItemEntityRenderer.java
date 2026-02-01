@@ -30,6 +30,8 @@ public class ItemEntityRenderer {
         {0.75f, 0.65f, 0.20f},     // 12 GOLD_ORE
         {0.39f, 0.86f, 1.00f},     // 13 DIAMOND_ORE
         {0.16f, 0.16f, 0.16f},     // 14 BEDROCK
+        {0.95f, 0.55f, 0.50f},     // 15 RAW_PORKCHOP
+        {0.55f, 0.40f, 0.25f},     // 16 ROTTEN_FLESH
     };
 
     private Shader shader;

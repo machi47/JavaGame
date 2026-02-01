@@ -14,7 +14,7 @@ public class TextureAtlas {
 
     private static final int TILE_SIZE = 16;
     private static final int TILES_PER_ROW = 8;
-    private static final int TILE_COUNT = 17; // 0-16
+    private static final int TILE_COUNT = 19; // 0-18 (includes mob drop items)
     private static final int ATLAS_WIDTH = TILES_PER_ROW * TILE_SIZE;  // 128
     private static final int ATLAS_HEIGHT = ((TILE_COUNT + TILES_PER_ROW - 1) / TILES_PER_ROW) * TILE_SIZE; // 48
 
@@ -76,6 +76,8 @@ public class TextureAtlas {
             case 14 -> generateOre(pixels, baseX, baseY, 255, 215, 0);   // gold ore
             case 15 -> generateOre(pixels, baseX, baseY, 100, 220, 255); // diamond ore
             case 16 -> generateBedrock(pixels, baseX, baseY);
+            case 17 -> generateSolidColor(pixels, baseX, baseY, 242, 140, 128); // raw porkchop
+            case 18 -> generateSolidColor(pixels, baseX, baseY, 140, 102, 64);  // rotten flesh
         }
     }
 
@@ -219,6 +221,17 @@ public class TextureAtlas {
                     int v = 120 + stoneNoise;
                     setPixel(buf, bx + x, by + y, v, v, v, 255);
                 }
+            }
+    }
+
+    private void generateSolidColor(ByteBuffer buf, int bx, int by, int r, int g, int b) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 15) - 8;
+                setPixel(buf, bx + x, by + y,
+                    Math.max(0, Math.min(255, r + noise)),
+                    Math.max(0, Math.min(255, g + noise)),
+                    Math.max(0, Math.min(255, b + noise)), 255);
             }
     }
 

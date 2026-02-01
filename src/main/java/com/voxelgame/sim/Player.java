@@ -58,6 +58,10 @@ public class Player {
     private float damageFlashTimer = 0.0f;
     private static final float DAMAGE_FLASH_DURATION = 0.3f;
 
+    // ---- Attack cooldown (for entity combat) ----
+    private float attackCooldown = 0.0f;
+    private static final float ATTACK_COOLDOWN_TIME = 0.4f;
+
     public Player() {
         this.camera = new Camera();
         camera.updateVectors();
@@ -266,6 +270,25 @@ public class Player {
         if (damageFlashTimer > 0) {
             damageFlashTimer -= dt;
             if (damageFlashTimer < 0) damageFlashTimer = 0;
+        }
+    }
+
+    // ---- Attack cooldown ----
+
+    /** Whether the player can attack an entity (cooldown expired). */
+    public boolean canAttack() {
+        return attackCooldown <= 0;
+    }
+
+    /** Reset attack cooldown after attacking. */
+    public void resetAttackCooldown() {
+        attackCooldown = ATTACK_COOLDOWN_TIME;
+    }
+
+    /** Update attack cooldown timer. Call each frame with dt. */
+    public void updateAttackCooldown(float dt) {
+        if (attackCooldown > 0) {
+            attackCooldown -= dt;
         }
     }
 

@@ -34,10 +34,15 @@ public final class Blocks {
     public static final Block DIAMOND_ORE  = new Block(13, "diamond_ore",  true,  false, new int[]{15},                 3.0f, -1);  // drops self
     public static final Block BEDROCK      = new Block(14, "bedrock",      true,  false, new int[]{16},                -1.0f,  0);  // unbreakable
 
+    // ---- Mob drop items (non-solid, non-placeable) ----
+    public static final Block RAW_PORKCHOP = new Block(15, "raw_porkchop", false, true,  new int[]{17},                 0.0f, -1);  // pig drop
+    public static final Block ROTTEN_FLESH = new Block(16, "rotten_flesh", false, true,  new int[]{18},                 0.0f, -1);  // zombie drop
+
     /** All blocks indexed by ID for fast lookup. */
     private static final Block[] REGISTRY = {
         AIR, STONE, COBBLESTONE, DIRT, GRASS, SAND, GRAVEL,
-        LOG, LEAVES, WATER, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, BEDROCK
+        LOG, LEAVES, WATER, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, BEDROCK,
+        RAW_PORKCHOP, ROTTEN_FLESH
     };
 
     /**

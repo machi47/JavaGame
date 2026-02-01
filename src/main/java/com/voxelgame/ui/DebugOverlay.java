@@ -45,16 +45,16 @@ public class DebugOverlay {
         return visible;
     }
 
-    /** Backward-compatible overload (no item entity count). */
+    /** Backward-compatible overload (no entity counts or time). */
     public void render(Player player, World world, int fps, int screenW, int screenH, boolean sprinting) {
-        render(player, world, fps, screenW, screenH, sprinting, 0);
+        render(player, world, fps, screenW, screenH, sprinting, 0, 0, "");
     }
 
     /**
      * Render debug text overlay.
      */
     public void render(Player player, World world, int fps, int screenW, int screenH,
-                       boolean sprinting, int itemEntityCount) {
+                       boolean sprinting, int itemEntityCount, int mobCount, String worldTimeStr) {
         if (!visible) return;
 
         Vector3f pos = player.getPosition();
@@ -83,8 +83,10 @@ public class DebugOverlay {
                 player.getGameMode(), player.getDifficulty(),
                 player.getHealth(), player.getMaxHealth()),
             String.format("  (F4=mode, F5=difficulty)"),
-            String.format("Inv: %d/%d slots  Items: %d  (E=inventory)",
-                player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE, itemEntityCount),
+            String.format("Inv: %d/%d slots  Items: %d  Mobs: %d  (E=inventory)",
+                player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE,
+                itemEntityCount, mobCount),
+            worldTimeStr.isEmpty() ? "" : String.format("Time: %s  Day %d", worldTimeStr, 0),
         };
 
         // Render each line with shadow for readability
