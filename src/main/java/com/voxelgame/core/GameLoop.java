@@ -66,7 +66,7 @@ public class GameLoop {
     private DeathScreen deathScreen;
     private InventoryScreen inventoryScreen;
 
-    // Survival mechanics
+    // Item entities
     private BlockBreakProgress blockBreakProgress;
     private ItemEntityManager itemEntityManager;
     private ItemEntityRenderer itemEntityRenderer;
@@ -230,7 +230,8 @@ public class GameLoop {
         inventoryScreen.init(bitmapFont);
         controller.setInventoryScreen(inventoryScreen);
 
-        // Item entity renderer
+        blockBreakProgress = new BlockBreakProgress();
+        itemEntityManager = new ItemEntityManager();
         itemEntityRenderer = new ItemEntityRenderer();
         itemEntityRenderer.init();
 
@@ -541,11 +542,10 @@ public class GameLoop {
         if (spawnDrops) {
             int dropId = block.getDrop();
             if (dropId > 0) {
-                itemEntityManager.spawnDrop(dropId, 1, bx, by, bz);
+                itemEntities.add(new ItemEntity(dropId, 1, bx + 0.5f, by + 0.5f, bz + 0.5f));
             }
         }
     }
-
     private void performAutoSave() {
         try {
             int saved = saveManager.saveModifiedChunks(world);
