@@ -431,10 +431,16 @@ public class Controller {
             }
         }
 
-        // F4 = cycle game mode
+        // F4 = cycle game mode (Creative ↔ Survival)
         if (Input.isKeyPressed(GLFW_KEY_F4)) {
             GameMode next = player.getGameMode().next();
             player.setGameMode(next);
+        }
+
+        // F5 = cycle difficulty (Peaceful → Easy → Normal → Hard → loop)
+        if (Input.isKeyPressed(GLFW_KEY_F5)) {
+            Difficulty next = player.getDifficulty().next();
+            player.setDifficulty(next);
         }
 
         // ESC = toggle cursor lock / close inventory

@@ -41,8 +41,9 @@ public class Player {
     private float health = MAX_HEALTH;
     private boolean dead = false;
 
-    // ---- Game mode ----
+    // ---- Game mode + difficulty ----
     private GameMode gameMode = GameMode.SURVIVAL;
+    private Difficulty difficulty = Difficulty.NORMAL;
 
     // ---- Fall tracking ----
     /** Highest Y (feet) while airborne. Reset on landing or entering fly mode. */
@@ -192,7 +193,8 @@ public class Player {
     public boolean isDead() { return dead; }
 
     /**
-     * Apply damage to the player, scaled by game mode multiplier.
+     * Apply damage to the player, scaled by difficulty multiplier.
+     * Creative mode is always invulnerable regardless of difficulty.
      *
      * @param amount      raw damage amount (before scaling)
      * @param source      the cause of damage
@@ -201,14 +203,14 @@ public class Player {
         if (dead) return;
         if (gameMode.isInvulnerable()) return;
 
-        float scaled = amount * gameMode.getDamageMultiplier();
+        float scaled = amount * difficulty.getDamageMultiplier(source);
         if (scaled <= 0) return;
 
         health -= scaled;
         damageFlashTimer = DAMAGE_FLASH_DURATION;
 
-        System.out.printf("[Health] Took %.1f damage (%s, %s mode, %.1fx) — HP: %.1f/%.1f%n",
-            scaled, source, gameMode, gameMode.getDamageMultiplier(), health, MAX_HEALTH);
+        System.out.printf("[Health] Took %.1f damage (%s, %s mode, %s difficulty, %.1fx) — HP: %.1f/%.1f%n",
+            scaled, source, gameMode, difficulty, difficulty.getDamageMultiplier(source), health, MAX_HEALTH);
 
         if (health <= 0) {
             health = 0;
@@ -296,8 +298,21 @@ public class Player {
         }
 
         System.out.println("[GameMode] " + prev + " -> " + mode +
-            " (damage=" + mode.getDamageMultiplier() + "x, invuln=" + mode.isInvulnerable() +
+            " (invuln=" + mode.isInvulnerable() +
             ", flight=" + mode.isFlightAllowed() + ")");
+    }
+
+    // ================================================================
+    // Difficulty
+    // ================================================================
+
+    public Difficulty getDifficulty() { return difficulty; }
+
+    public void setDifficulty(Difficulty diff) {
+        Difficulty prev = this.difficulty;
+        this.difficulty = diff;
+        System.out.println("[Difficulty] " + prev + " -> " + diff +
+            " (env=" + diff.getEnvDamageMultiplier() + "x, mob=" + diff.getMobDamageMultiplier() + "x)");
     }
 
     // ================================================================

@@ -79,8 +79,10 @@ public class DebugOverlay {
                 player.isOnGround() ? "YES" : "NO",
                 sprinting ? "YES" : "NO"),
             String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
-            String.format("Mode: %s  HP: %.1f/%.1f  (F4=cycle mode)",
-                player.getGameMode(), player.getHealth(), player.getMaxHealth()),
+            String.format("Mode: %s  Difficulty: %s  HP: %.1f/%.1f",
+                player.getGameMode(), player.getDifficulty(),
+                player.getHealth(), player.getMaxHealth()),
+            String.format("  (F4=mode, F5=difficulty)"),
             String.format("Inv: %d/%d slots  Items: %d  (E=inventory)",
                 player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE, itemEntityCount),
         };

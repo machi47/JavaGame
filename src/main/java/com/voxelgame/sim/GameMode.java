@@ -1,50 +1,47 @@
 package com.voxelgame.sim;
 
 /**
- * Game modes controlling damage scaling, invulnerability, and flight access.
+ * Game modes controlling HOW THE PLAYER PLAYS — not difficulty.
+ * Difficulty (damage scaling) is handled by {@link Difficulty}.
  *
- * CREATIVE  — invulnerable, free flight
- * SURVIVAL  — normal damage (1×), no flight
- * SAFE      — half damage (0.5×), no flight
- * EASY      — normal damage (1×), no flight (same as SURVIVAL)
- * MEDIUM    — increased damage (1.5×), no flight
- * HARD      — double damage (2×), no flight
+ * CREATIVE  — invulnerable, infinite blocks, instant break, free flight
+ * SURVIVAL  — health system, finite blocks, time-based breaking, no flight
  */
 public enum GameMode {
 
-    CREATIVE(0.0f, true,  true),
-    SURVIVAL(1.0f, false, false),
-    SAFE    (0.5f, false, false),
-    EASY    (1.0f, false, false),
-    MEDIUM  (1.5f, false, false),
-    HARD    (2.0f, false, false);
+    CREATIVE(true, true, true),
+    SURVIVAL(false, false, false);
 
-    private final float  damageMultiplier;
     private final boolean invulnerable;
     private final boolean flightAllowed;
+    private final boolean instantBreak;
 
-    GameMode(float damageMultiplier, boolean invulnerable, boolean flightAllowed) {
-        this.damageMultiplier = damageMultiplier;
-        this.invulnerable     = invulnerable;
-        this.flightAllowed    = flightAllowed;
+    GameMode(boolean invulnerable, boolean flightAllowed, boolean instantBreak) {
+        this.invulnerable  = invulnerable;
+        this.flightAllowed = flightAllowed;
+        this.instantBreak  = instantBreak;
     }
 
-    public float  getDamageMultiplier() { return damageMultiplier; }
-    public boolean isInvulnerable()     { return invulnerable; }
-    public boolean isFlightAllowed()    { return flightAllowed; }
+    public boolean isInvulnerable()  { return invulnerable; }
+    public boolean isFlightAllowed() { return flightAllowed; }
+    public boolean isInstantBreak()  { return instantBreak; }
 
-    /** Cycle to the next game mode (wraps around). */
+    /** Cycle to the next game mode (Creative ↔ Survival). */
     public GameMode next() {
         GameMode[] modes = values();
         return modes[(ordinal() + 1) % modes.length];
     }
 
-    /** Safe parse from string — defaults to SURVIVAL if unrecognized. */
+    /**
+     * Safe parse from string — defaults to SURVIVAL if unrecognized.
+     * Backward compatible: old modes (SAFE, EASY, MEDIUM, HARD) map to SURVIVAL.
+     */
     public static GameMode fromString(String s) {
         if (s == null) return SURVIVAL;
         try {
             return valueOf(s.toUpperCase());
         } catch (IllegalArgumentException e) {
+            // Old mode names from Phase 1 all map to SURVIVAL
             return SURVIVAL;
         }
     }

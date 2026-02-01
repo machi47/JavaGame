@@ -13,6 +13,7 @@ import com.voxelgame.save.SaveManager;
 import com.voxelgame.save.WorldMeta;
 import com.voxelgame.sim.BlockBreakProgress;
 import com.voxelgame.sim.Controller;
+import com.voxelgame.sim.Difficulty;
 import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.ItemEntity;
 import com.voxelgame.sim.ItemEntityManager;
@@ -160,8 +161,9 @@ public class GameLoop {
                     player.getCamera().setYaw(meta.getPlayerYaw());
                     player.getCamera().setPitch(meta.getPlayerPitch());
 
-                    // Restore game mode, spawn point, and health
+                    // Restore game mode, difficulty, spawn point, and health
                     player.setGameMode(meta.getGameMode());
+                    player.setDifficulty(meta.getDifficulty());
                     player.setSpawnPoint(meta.getSpawnX(), meta.getSpawnY(), meta.getSpawnZ());
                     if (!meta.getGameMode().isInvulnerable()) {
                         player.restoreHealth(meta.getPlayerHealth());
@@ -171,7 +173,8 @@ public class GameLoop {
                     System.out.println("Loaded world '" + WORLD_NAME + "' (seed=" + seed + ")");
                     System.out.println("  Player position: " +
                         meta.getPlayerX() + ", " + meta.getPlayerY() + ", " + meta.getPlayerZ());
-                    System.out.println("  Game mode: " + meta.getGameMode());
+                    System.out.println("  Game mode: " + meta.getGameMode() +
+                        "  Difficulty: " + meta.getDifficulty());
                     System.out.println("  Health: " + meta.getPlayerHealth());
                 }
             } catch (IOException e) {
@@ -196,8 +199,9 @@ public class GameLoop {
                 System.out.println("New world — Spawn point: " + spawn.x() + ", " + spawn.y() + ", " + spawn.z());
             }
 
-            // Default to survival mode for new worlds
+            // Default to survival mode + normal difficulty for new worlds
             player.setGameMode(GameMode.SURVIVAL);
+            player.setDifficulty(Difficulty.NORMAL);
 
             // Save initial metadata
             try {
@@ -209,6 +213,7 @@ public class GameLoop {
                     player.getCamera().getYaw(), player.getCamera().getPitch()
                 );
                 meta.setGameMode(player.getGameMode());
+                meta.setDifficulty(player.getDifficulty());
                 meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
                 meta.setPlayerHealth(player.getHealth());
                 saveManager.saveMeta(meta);
@@ -576,6 +581,7 @@ public class GameLoop {
                 player.getCamera().getYaw(), player.getCamera().getPitch()
             );
             meta.setGameMode(player.getGameMode());
+            meta.setDifficulty(player.getDifficulty());
             meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
             meta.setPlayerHealth(player.getHealth());
             meta.setLastPlayedAt(System.currentTimeMillis());

@@ -1,5 +1,6 @@
 package com.voxelgame.save;
 
+import com.voxelgame.sim.Difficulty;
 import com.voxelgame.sim.GameMode;
 
 import java.io.*;
@@ -19,8 +20,9 @@ public class WorldMeta {
     private long createdAt;
     private long lastPlayedAt;
 
-    // New: game mode, spawn point, health
+    // New: game mode, difficulty, spawn point, health
     private GameMode gameMode = GameMode.SURVIVAL;
+    private Difficulty difficulty = Difficulty.NORMAL;
     private float spawnX, spawnY, spawnZ;
     private float playerHealth = 20.0f;
 
@@ -64,6 +66,11 @@ public class WorldMeta {
     public GameMode getGameMode() { return gameMode; }
     public void setGameMode(GameMode mode) { this.gameMode = mode; }
 
+    // --- Difficulty ---
+
+    public Difficulty getDifficulty() { return difficulty; }
+    public void setDifficulty(Difficulty diff) { this.difficulty = diff; }
+
     // --- Spawn point ---
 
     public float getSpawnX() { return spawnX; }
@@ -101,6 +108,7 @@ public class WorldMeta {
 
         // New fields
         props.setProperty("gameMode", gameMode.name());
+        props.setProperty("difficulty", difficulty.name());
         props.setProperty("spawnX", Float.toString(spawnX));
         props.setProperty("spawnY", Float.toString(spawnY));
         props.setProperty("spawnZ", Float.toString(spawnZ));
@@ -136,6 +144,7 @@ public class WorldMeta {
 
         // New fields (with backwards-compatible defaults)
         meta.gameMode = GameMode.fromString(props.getProperty("gameMode", "SURVIVAL"));
+        meta.difficulty = Difficulty.fromString(props.getProperty("difficulty", "NORMAL"));
         meta.spawnX = Float.parseFloat(props.getProperty("spawnX", props.getProperty("playerX", "0")));
         meta.spawnY = Float.parseFloat(props.getProperty("spawnY", props.getProperty("playerY", "80")));
         meta.spawnZ = Float.parseFloat(props.getProperty("spawnZ", props.getProperty("playerZ", "0")));
