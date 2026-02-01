@@ -5,5 +5,8 @@ package com.voxelgame.sim;
  */
 public enum EntityType {
     PIG,
-    ZOMBIE
+    ZOMBIE,
+    BOAT,
+    MINECART,
+    TNT
 }

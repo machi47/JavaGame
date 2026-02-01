@@ -178,6 +178,14 @@ public class Controller {
         return inventoryScreen != null && inventoryScreen.isOpen();
     }
 
+    /** Whether any UI screen is open that should suppress normal controls. */
+    private boolean anyExternalScreenOpen = false;
+
+    /** Set by GameLoop when chest screen etc. is open. */
+    public void setExternalScreenOpen(boolean open) {
+        this.anyExternalScreenOpen = open;
+    }
+
     // ---- Agent action processing ----
 
     /**
@@ -323,9 +331,15 @@ public class Controller {
 
     /**
      * Walk mode: compute wish direction, apply acceleration/friction,
-     * handle sprint and jump.
+     * handle sprint and jump. In water, speed is reduced by 50%.
      */
     private void handleWalkMovement(float dt, Vector3f front, Vector3f right) {
+        // ---- Mounted entity control ----
+        if (player.isMounted()) {
+            handleMountedMovement(dt, front, right);
+            return;
+        }
+
         Vector3f vel = player.getVelocity();
 
         // Flat direction vectors (ignore camera pitch for horizontal movement)
@@ -339,6 +353,11 @@ public class Controller {
                     || (agentSprinting && agentMoveForward > 0);
         float speed = WALK_SPEED;
         if (sprinting) speed *= SPRINT_MULTIPLIER;
+
+        // Water speed reduction
+        if (player.isInWater()) {
+            speed *= Physics.WATER_SPEED_MULTIPLIER;
+        }
 
         // Compute wish direction from keyboard
         float wishX = 0, wishZ = 0;
@@ -396,9 +415,62 @@ public class Controller {
             vel.z *= clamp;
         }
 
-        // Jump
+        // Jump / Swim up
         if (Input.isKeyDown(GLFW_KEY_SPACE)) {
-            player.jump();
+            if (player.isInWater()) {
+                // Swim upward in water
+                vel.y = 4.0f;
+            } else {
+                player.jump();
+            }
+        }
+    }
+
+    /**
+     * Handle movement when mounted on a boat or minecart.
+     * Forwards WASD input to the mounted entity.
+     */
+    private void handleMountedMovement(float dt, Vector3f front, Vector3f right) {
+        Entity mounted = player.getMountedEntity();
+        if (mounted == null) return;
+
+        float forward = 0, strafe = 0;
+        if (Input.isKeyDown(GLFW_KEY_W)) forward += 1;
+        if (Input.isKeyDown(GLFW_KEY_S)) forward -= 1;
+        if (Input.isKeyDown(GLFW_KEY_A)) strafe -= 1;
+        if (Input.isKeyDown(GLFW_KEY_D)) strafe += 1;
+
+        if (mounted instanceof Boat boat) {
+            boat.setInput(forward, strafe);
+            boat.setRiderYaw(player.getCamera().getYaw());
+
+            // Position player on boat
+            player.getPosition().set(boat.getX(), boat.getY() + Boat.class.cast(mounted).getHeight() + Player.EYE_HEIGHT, boat.getZ());
+            player.getVelocity().set(0);
+        } else if (mounted instanceof Minecart cart) {
+            // Minecart: push with W key
+            if (forward > 0 && cart.getRailSpeed() == 0) {
+                float yawRad = (float) Math.toRadians(player.getCamera().getYaw());
+                float pushX = -(float) Math.sin(yawRad);
+                float pushZ = (float) Math.cos(yawRad);
+                cart.push(pushX, pushZ);
+            }
+
+            // Position player on minecart
+            player.getPosition().set(cart.getX(), cart.getY() + cart.getHeight() + Player.EYE_HEIGHT, cart.getZ());
+            player.getVelocity().set(0);
+        }
+
+        // Dismount with Left Shift
+        if (Input.isKeyPressed(GLFW_KEY_LEFT_SHIFT) || Input.isKeyPressed(GLFW_KEY_LEFT_CONTROL)) {
+            if (mounted instanceof Boat boat) {
+                boat.dismount();
+            } else if (mounted instanceof Minecart cart) {
+                cart.dismount();
+            }
+            player.dismount();
+            // Move player slightly to the side
+            player.getPosition().x += 1.0f;
         }
     }
 

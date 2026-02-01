@@ -33,6 +33,8 @@ public final class RecipeRegistry {
         int COBBLE = Blocks.COBBLESTONE.id();
         int STICK = Blocks.STICK.id();
         int CRAFT_TABLE = Blocks.CRAFTING_TABLE.id();
+        int SAND = Blocks.SAND.id();
+        int IRON = Blocks.IRON_ORE.id();
 
         recipes.add(Recipe.shapeless(new int[]{ LOG }, PLANKS, 4));
         recipes.add(new Recipe(1, 2, new int[]{ PLANKS, PLANKS }, STICK, 4));
@@ -45,6 +47,23 @@ public final class RecipeRegistry {
         recipes.add(new Recipe(2, 2, new int[]{ COBBLE, COBBLE, STICK, 0 }, Blocks.STONE_PICKAXE.id(), 1));
         recipes.add(new Recipe(2, 2, new int[]{ COBBLE, COBBLE, COBBLE, STICK }, Blocks.STONE_AXE.id(), 1));
         recipes.add(new Recipe(1, 2, new int[]{ COBBLE, STICK }, Blocks.STONE_SHOVEL.id(), 1));
+
+        // ---- Advanced feature recipes ----
+
+        // Chest: 2x2 planks (same as crafting table, but with sticks in pattern)
+        recipes.add(new Recipe(2, 2, new int[]{ PLANKS, PLANKS, PLANKS, STICK }, Blocks.CHEST.id(), 1));
+
+        // Boat: planks in bottom row + stick
+        recipes.add(new Recipe(2, 2, new int[]{ PLANKS, 0, PLANKS, PLANKS }, Blocks.BOAT_ITEM.id(), 1));
+
+        // Minecart: iron ore (since no iron ingots yet)
+        recipes.add(new Recipe(2, 2, new int[]{ IRON, 0, IRON, IRON }, Blocks.MINECART_ITEM.id(), 1));
+
+        // Rail: iron + stick
+        recipes.add(new Recipe(2, 2, new int[]{ IRON, 0, STICK, 0 }, Blocks.RAIL.id(), 16));
+
+        // TNT: sand + gravel (simplified recipe since no gunpowder)
+        recipes.add(new Recipe(2, 2, new int[]{ SAND, SAND, SAND, SAND }, Blocks.TNT.id(), 1));
 
         System.out.println("[RecipeRegistry] Registered " + recipes.size() + " recipes");
     }

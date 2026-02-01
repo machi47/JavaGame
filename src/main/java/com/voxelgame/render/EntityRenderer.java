@@ -2,6 +2,7 @@ package com.voxelgame.render;
 
 import com.voxelgame.sim.Entity;
 import com.voxelgame.sim.EntityType;
+import com.voxelgame.sim.TNTEntity;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
 
@@ -24,6 +25,10 @@ public class EntityRenderer {
     // ---- Body colors ----
     private static final float[] PIG_COLOR    = { 0.95f, 0.60f, 0.60f };  // pink
     private static final float[] ZOMBIE_COLOR = { 0.35f, 0.60f, 0.30f };  // green
+    private static final float[] BOAT_COLOR   = { 0.55f, 0.35f, 0.15f };  // brown
+    private static final float[] CART_COLOR   = { 0.50f, 0.50f, 0.55f };  // gray
+    private static final float[] TNT_COLOR    = { 0.85f, 0.20f, 0.15f };  // red
+    private static final float[] TNT_FLASH    = { 1.00f, 1.00f, 1.00f };  // white
 
     // ---- Eye colors ----
     private static final float[] PIG_EYE_COLOR    = { 0.10f, 0.10f, 0.10f };  // black
@@ -95,14 +100,24 @@ public class EntityRenderer {
 
             // Choose colors based on entity type
             float[] bodyColor;
-            float[] eyeColor;
+            float[] eyeColor = null;
+            boolean hasEyes = true;
 
-            if (entity.getType() == EntityType.PIG) {
-                bodyColor = PIG_COLOR;
-                eyeColor = PIG_EYE_COLOR;
-            } else {
-                bodyColor = ZOMBIE_COLOR;
-                eyeColor = ZOMBIE_EYE_COLOR;
+            switch (entity.getType()) {
+                case PIG -> { bodyColor = PIG_COLOR; eyeColor = PIG_EYE_COLOR; }
+                case ZOMBIE -> { bodyColor = ZOMBIE_COLOR; eyeColor = ZOMBIE_EYE_COLOR; }
+                case BOAT -> { bodyColor = BOAT_COLOR; hasEyes = false; }
+                case MINECART -> { bodyColor = CART_COLOR; hasEyes = false; }
+                case TNT -> {
+                    // TNT blinks between red and white
+                    if (entity instanceof TNTEntity tnt && tnt.isBlinking()) {
+                        bodyColor = TNT_FLASH;
+                    } else {
+                        bodyColor = TNT_COLOR;
+                    }
+                    hasEyes = false;
+                }
+                default -> { bodyColor = ZOMBIE_COLOR; eyeColor = ZOMBIE_EYE_COLOR; }
             }
 
             // Hurt flash: tint red when recently damaged
@@ -114,8 +129,10 @@ public class EntityRenderer {
             // Draw body
             drawBody(cameraView, entity, br, bg, bb);
 
-            // Draw eyes
-            drawEyes(cameraView, entity, eyeColor[0], eyeColor[1], eyeColor[2]);
+            // Draw eyes (only for mobs)
+            if (hasEyes && eyeColor != null) {
+                drawEyes(cameraView, entity, eyeColor[0], eyeColor[1], eyeColor[2]);
+            }
         }
 
         glBindVertexArray(0);
@@ -157,15 +174,18 @@ public class EntityRenderer {
         float eyeHeight; // relative to entity height
         float eyeSpacing; // from center
 
-        if (entity.getType() == EntityType.PIG) {
-            eyeSize = 0.07f;
-            eyeHeight = 0.65f;
-            eyeSpacing = entity.getHalfWidth() * 0.35f;
-        } else {
-            // Zombie: bigger, more menacing eyes
-            eyeSize = 0.08f;
-            eyeHeight = 0.82f;
-            eyeSpacing = entity.getHalfWidth() * 0.40f;
+        switch (entity.getType()) {
+            case PIG -> {
+                eyeSize = 0.07f;
+                eyeHeight = 0.65f;
+                eyeSpacing = entity.getHalfWidth() * 0.35f;
+            }
+            default -> {
+                // Zombie and other mob types
+                eyeSize = 0.08f;
+                eyeHeight = 0.82f;
+                eyeSpacing = entity.getHalfWidth() * 0.40f;
+            }
         }
 
         float eyeY = entity.getY() + entity.getHeight() * eyeHeight;

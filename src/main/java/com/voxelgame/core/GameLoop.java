@@ -754,6 +754,9 @@ public class GameLoop {
             }
         }
 
+        // Inform controller about external screen state
+        controller.setExternalScreenOpen(chestScreen != null && chestScreen.isOpen());
+
         // Update timers
         player.updateDamageFlash(dt);
         player.updateAttackCooldown(dt);
@@ -1064,22 +1067,22 @@ public class GameLoop {
                         }
                     } else if (placedBlockId == Blocks.BOAT_ITEM.id()) {
                         // Place boat entity on water
-                        int px = currentHit.x() + currentHit.nx();
-                        int py = currentHit.y() + currentHit.ny();
-                        int pz = currentHit.z() + currentHit.nz();
-                        Boat boat = new Boat(px + 0.5f, py, pz + 0.5f);
+                        int bpx = currentHit.x() + currentHit.nx();
+                        int bpy = currentHit.y() + currentHit.ny();
+                        int bpz = currentHit.z() + currentHit.nz();
+                        Boat boat = new Boat(bpx + 0.5f, bpy, bpz + 0.5f);
                         entityManager.addEntity(boat);
                         if (!isCreative) player.consumeSelectedBlock();
-                        System.out.println("[Boat] Placed boat at " + px + ", " + py + ", " + pz);
+                        System.out.println("[Boat] Placed boat at " + bpx + ", " + bpy + ", " + bpz);
                     } else if (placedBlockId == Blocks.MINECART_ITEM.id()) {
                         // Place minecart entity on rail
-                        int px = currentHit.x() + currentHit.nx();
-                        int py = currentHit.y() + currentHit.ny();
-                        int pz = currentHit.z() + currentHit.nz();
-                        Minecart cart = new Minecart(px + 0.5f, py, pz + 0.5f);
+                        int mpx = currentHit.x() + currentHit.nx();
+                        int mpy = currentHit.y() + currentHit.ny();
+                        int mpz = currentHit.z() + currentHit.nz();
+                        Minecart cart = new Minecart(mpx + 0.5f, mpy, mpz + 0.5f);
                         entityManager.addEntity(cart);
                         if (!isCreative) player.consumeSelectedBlock();
-                        System.out.println("[Minecart] Placed minecart at " + px + ", " + py + ", " + pz);
+                        System.out.println("[Minecart] Placed minecart at " + mpx + ", " + mpy + ", " + mpz);
                     }
                 }
             }

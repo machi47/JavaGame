@@ -17,5 +17,11 @@ public enum DamageSource {
     VOID,
 
     /** Generic/unspecified damage. */
-    GENERIC
+    GENERIC,
+
+    /** Damage from drowning (no oxygen underwater). */
+    DROWNING,
+
+    /** Damage from TNT explosion. */
+    EXPLOSION
 }

@@ -53,6 +53,15 @@ public final class Blocks {
     public static final Block STONE_AXE      = new Block(24, "stone_axe",      false, true, new int[]{0},                  0.0f, -1);
     public static final Block STONE_SHOVEL   = new Block(25, "stone_shovel",   false, true, new int[]{0},                  0.0f, -1);
 
+    // ---- Advanced feature blocks ----
+    public static final Block CHEST          = new Block(26, "chest",          true,  false, new int[]{22, 22, 23, 23, 23, 23}, 2.5f, -1);
+    public static final Block RAIL           = new Block(27, "rail",           false, true,  new int[]{24},                 0.7f, -1);
+    public static final Block TNT            = new Block(28, "tnt",            true,  false, new int[]{25, 25, 26, 26, 26, 26}, 0.0f,  0);  // instant break, drops nothing (activates instead)
+
+    // ---- Advanced feature items (non-solid, non-placeable) ----
+    public static final Block BOAT_ITEM      = new Block(29, "boat",           false, true,  new int[]{0},                  0.0f, -1);
+    public static final Block MINECART_ITEM  = new Block(30, "minecart",       false, true,  new int[]{0},                  0.0f, -1);
+
     /** All blocks indexed by ID for fast lookup. */
     private static final Block[] REGISTRY = {
         AIR, STONE, COBBLESTONE, DIRT, GRASS, SAND, GRAVEL,
@@ -60,7 +69,9 @@ public final class Blocks {
         RAW_PORKCHOP, ROTTEN_FLESH,
         PLANKS, CRAFTING_TABLE, STICK,
         WOODEN_PICKAXE, WOODEN_AXE, WOODEN_SHOVEL,
-        STONE_PICKAXE, STONE_AXE, STONE_SHOVEL
+        STONE_PICKAXE, STONE_AXE, STONE_SHOVEL,
+        CHEST, RAIL, TNT,
+        BOAT_ITEM, MINECART_ITEM
     };
 
     /**
