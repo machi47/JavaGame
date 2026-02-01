@@ -71,6 +71,10 @@ public class Window {
         return glfwWindowShouldClose(handle);
     }
 
+    public void requestClose() {
+        glfwSetWindowShouldClose(handle, true);
+    }
+
     public boolean wasResized() {
         if (resized) {
             resized = false;

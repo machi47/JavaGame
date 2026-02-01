@@ -1,12 +1,15 @@
 package com.voxelgame.save;
 
+import com.voxelgame.sim.GameMode;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.Properties;
 
 /**
  * World metadata stored in world.dat as a simple key=value properties file.
- * Contains: seed, player position/rotation, game time, creation time.
+ * Contains: seed, player position/rotation, game mode, spawn point,
+ * health, game time, creation time.
  */
 public class WorldMeta {
 
@@ -15,6 +18,11 @@ public class WorldMeta {
     private float playerYaw, playerPitch;
     private long createdAt;
     private long lastPlayedAt;
+
+    // New: game mode, spawn point, health
+    private GameMode gameMode = GameMode.SURVIVAL;
+    private float spawnX, spawnY, spawnZ;
+    private float playerHealth = 20.0f;
 
     public WorldMeta() {
         this.createdAt = System.currentTimeMillis();
@@ -51,6 +59,27 @@ public class WorldMeta {
     public long getLastPlayedAt() { return lastPlayedAt; }
     public void setLastPlayedAt(long time) { this.lastPlayedAt = time; }
 
+    // --- Game mode ---
+
+    public GameMode getGameMode() { return gameMode; }
+    public void setGameMode(GameMode mode) { this.gameMode = mode; }
+
+    // --- Spawn point ---
+
+    public float getSpawnX() { return spawnX; }
+    public float getSpawnY() { return spawnY; }
+    public float getSpawnZ() { return spawnZ; }
+    public void setSpawnPoint(float x, float y, float z) {
+        this.spawnX = x;
+        this.spawnY = y;
+        this.spawnZ = z;
+    }
+
+    // --- Player health ---
+
+    public float getPlayerHealth() { return playerHealth; }
+    public void setPlayerHealth(float health) { this.playerHealth = health; }
+
     // --- Serialization ---
 
     /**
@@ -69,6 +98,13 @@ public class WorldMeta {
         props.setProperty("playerPitch", Float.toString(playerPitch));
         props.setProperty("createdAt", Long.toString(createdAt));
         props.setProperty("lastPlayedAt", Long.toString(System.currentTimeMillis()));
+
+        // New fields
+        props.setProperty("gameMode", gameMode.name());
+        props.setProperty("spawnX", Float.toString(spawnX));
+        props.setProperty("spawnY", Float.toString(spawnY));
+        props.setProperty("spawnZ", Float.toString(spawnZ));
+        props.setProperty("playerHealth", Float.toString(playerHealth));
 
         try (OutputStream os = new FileOutputStream(file.toFile())) {
             props.store(os, "VoxelGame World Metadata");
@@ -97,6 +133,13 @@ public class WorldMeta {
         meta.playerPitch = Float.parseFloat(props.getProperty("playerPitch", "0"));
         meta.createdAt = Long.parseLong(props.getProperty("createdAt", "0"));
         meta.lastPlayedAt = Long.parseLong(props.getProperty("lastPlayedAt", "0"));
+
+        // New fields (with backwards-compatible defaults)
+        meta.gameMode = GameMode.fromString(props.getProperty("gameMode", "SURVIVAL"));
+        meta.spawnX = Float.parseFloat(props.getProperty("spawnX", props.getProperty("playerX", "0")));
+        meta.spawnY = Float.parseFloat(props.getProperty("spawnY", props.getProperty("playerY", "80")));
+        meta.spawnZ = Float.parseFloat(props.getProperty("spawnZ", props.getProperty("playerZ", "0")));
+        meta.playerHealth = Float.parseFloat(props.getProperty("playerHealth", "20.0"));
 
         return meta;
     }

@@ -11,11 +11,14 @@ import com.voxelgame.render.Renderer;
 import com.voxelgame.save.SaveManager;
 import com.voxelgame.save.WorldMeta;
 import com.voxelgame.sim.Controller;
+import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.Physics;
 import com.voxelgame.sim.Player;
 import com.voxelgame.ui.BitmapFont;
+import com.voxelgame.ui.DeathScreen;
 import com.voxelgame.ui.DebugOverlay;
 import com.voxelgame.ui.Hud;
+import com.voxelgame.ui.Screenshot;
 import com.voxelgame.world.Blocks;
 import com.voxelgame.world.ChunkPos;
 import com.voxelgame.world.Lighting;
@@ -54,6 +57,7 @@ public class GameLoop {
     private BitmapFont bitmapFont;
     private DebugOverlay debugOverlay;
     private BlockHighlight blockHighlight;
+    private DeathScreen deathScreen;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -71,6 +75,11 @@ public class GameLoop {
     // Auto-save timer
     private float autoSaveTimer = 0;
 
+    // Auto-test mode (for automated screenshot testing)
+    private boolean autoTestMode = false;
+    private float autoTestTimer = 0;
+    private int autoTestPhase = 0; // 0=wait, 1=ss-hud, 2=wait-death, 3=ss-death, 4=respawn, 5=ss-respawn, 6=done
+
     /** Enable automation mode (socket server + optional script). */
     public void setAutomationMode(boolean enabled) { this.automationMode = enabled; }
 
@@ -79,6 +88,9 @@ public class GameLoop {
 
     /** Set path to automation script file. */
     public void setScriptPath(String path) { this.scriptPath = path; }
+
+    /** Enable auto-test mode (scripted screenshot sequence, then exit). */
+    public void setAutoTestMode(boolean enabled) { this.autoTestMode = enabled; }
 
     public void run() {
         init();
@@ -132,10 +144,19 @@ public class GameLoop {
                     player.getCamera().setYaw(meta.getPlayerYaw());
                     player.getCamera().setPitch(meta.getPlayerPitch());
 
+                    // Restore game mode, spawn point, and health
+                    player.setGameMode(meta.getGameMode());
+                    player.setSpawnPoint(meta.getSpawnX(), meta.getSpawnY(), meta.getSpawnZ());
+                    if (!meta.getGameMode().isInvulnerable()) {
+                        player.restoreHealth(meta.getPlayerHealth());
+                    }
+
                     loadedFromSave = true;
                     System.out.println("Loaded world '" + WORLD_NAME + "' (seed=" + seed + ")");
                     System.out.println("  Player position: " +
                         meta.getPlayerX() + ", " + meta.getPlayerY() + ", " + meta.getPlayerZ());
+                    System.out.println("  Game mode: " + meta.getGameMode());
+                    System.out.println("  Health: " + meta.getPlayerHealth());
                 }
             } catch (IOException e) {
                 System.err.println("Failed to load world meta, creating new world: " + e.getMessage());
@@ -155,8 +176,13 @@ public class GameLoop {
                 player.getCamera().getPosition().set(
                     (float) spawn.x(), (float) spawn.y(), (float) spawn.z()
                 );
+                // Set spawn point for respawning
+                player.setSpawnPoint((float) spawn.x(), (float) spawn.y(), (float) spawn.z());
                 System.out.println("New world — Spawn point: " + spawn.x() + ", " + spawn.y() + ", " + spawn.z());
             }
+
+            // Default to survival mode for new worlds
+            player.setGameMode(GameMode.SURVIVAL);
 
             // Save initial metadata
             try {
@@ -167,6 +193,9 @@ public class GameLoop {
                 meta.setPlayerRotation(
                     player.getCamera().getYaw(), player.getCamera().getPitch()
                 );
+                meta.setGameMode(player.getGameMode());
+                meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
+                meta.setPlayerHealth(player.getHealth());
                 saveManager.saveMeta(meta);
                 System.out.println("Created new world '" + WORLD_NAME + "' (seed=" + seed + ")");
             } catch (IOException e) {
@@ -180,6 +209,8 @@ public class GameLoop {
         bitmapFont = new BitmapFont();
         bitmapFont.init();
         debugOverlay = new DebugOverlay(bitmapFont);
+        deathScreen = new DeathScreen(bitmapFont);
+        deathScreen.init();
         blockHighlight = new BlockHighlight();
         blockHighlight.init();
 
@@ -222,16 +253,44 @@ public class GameLoop {
                 debugOverlay.toggle();
             }
 
+            // ---- Handle respawn (R key when dead) ----
+            if (player.isDead() && Input.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_R)) {
+                player.respawn();
+                deathScreen.reset();
+                if (!Input.isCursorLocked()) {
+                    Input.lockCursor();
+                }
+            }
+
+            // ---- Update damage flash ----
+            player.updateDamageFlash(dt);
+
+            // ---- Track pre-death state for death screen trigger ----
+            boolean wasDead = player.isDead();
+
             // ---- Update ----
             controller.update(dt);
             physics.step(player, dt);
             chunkManager.update(player);
 
-            // Raycast every frame for block highlight
-            currentHit = Raycast.cast(
-                world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
-            );
-            handleBlockInteraction();
+            // ---- Detect death transition (for death screen reset) ----
+            if (player.isDead() && !wasDead) {
+                deathScreen.reset();
+                // Unlock cursor so player can see death screen
+                if (Input.isCursorLocked()) {
+                    Input.unlockCursor();
+                }
+            }
+
+            // Raycast every frame for block highlight (skip when dead)
+            if (!player.isDead()) {
+                currentHit = Raycast.cast(
+                    world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
+                );
+                handleBlockInteraction();
+            } else {
+                currentHit = null;
+            }
 
             // Broadcast state to connected agents
             if (agentServer != null) {
@@ -274,6 +333,70 @@ public class GameLoop {
 
             hud.render(w, h, player);
             debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting());
+
+            // ---- Death screen (on top of everything) ----
+            if (player.isDead()) {
+                deathScreen.render(w, h, dt);
+            }
+
+            // ---- Screenshot (F2) ----
+            if (Input.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F2)) {
+                Screenshot.capture(w, h);
+            }
+
+            // ---- Auto-test mode (scripted screenshots) ----
+            if (autoTestMode) {
+                autoTestTimer += dt;
+                switch (autoTestPhase) {
+                    case 0: // Wait for initial render + fall
+                        if (autoTestTimer > 3.0f) {
+                            autoTestPhase = 1;
+                            autoTestTimer = 0;
+                        }
+                        break;
+                    case 1: // Take screenshot (might be death or health bar)
+                        Screenshot.capture(w, h);
+                        autoTestPhase = 2;
+                        autoTestTimer = 0;
+                        break;
+                    case 2: // Wait a bit then check if dead
+                        if (autoTestTimer > 1.0f) {
+                            if (player.isDead()) {
+                                autoTestPhase = 3;
+                            } else {
+                                autoTestPhase = 5; // Skip to respawn ss if alive
+                            }
+                            autoTestTimer = 0;
+                        }
+                        break;
+                    case 3: // Take death screen screenshot
+                        Screenshot.capture(w, h);
+                        autoTestPhase = 4;
+                        autoTestTimer = 0;
+                        break;
+                    case 4: // Auto-respawn after delay
+                        if (autoTestTimer > 2.0f) {
+                            player.respawn();
+                            deathScreen.reset();
+                            autoTestPhase = 5;
+                            autoTestTimer = 0;
+                        }
+                        break;
+                    case 5: // Wait for respawn render
+                        if (autoTestTimer > 3.0f) {
+                            Screenshot.capture(w, h);
+                            autoTestPhase = 6;
+                            autoTestTimer = 0;
+                        }
+                        break;
+                    case 6: // Done — exit
+                        if (autoTestTimer > 1.0f) {
+                            System.out.println("[AutoTest] Test complete, exiting.");
+                            window.requestClose();
+                        }
+                        break;
+                }
+            }
 
             // ---- End frame ----
             Input.endFrame();
@@ -349,7 +472,7 @@ public class GameLoop {
     }
 
     /**
-     * Save the current player position and rotation to world metadata.
+     * Save the current player position, rotation, game mode, and health to world metadata.
      */
     private void savePlayerMeta() {
         try {
@@ -363,6 +486,9 @@ public class GameLoop {
             meta.setPlayerRotation(
                 player.getCamera().getYaw(), player.getCamera().getPitch()
             );
+            meta.setGameMode(player.getGameMode());
+            meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
+            meta.setPlayerHealth(player.getHealth());
             meta.setLastPlayedAt(System.currentTimeMillis());
             saveManager.saveMeta(meta);
         } catch (IOException e) {
@@ -394,6 +520,7 @@ public class GameLoop {
 
         chunkManager.shutdown();
         if (blockHighlight != null) blockHighlight.cleanup();
+        if (deathScreen != null) deathScreen.cleanup();
         if (bitmapFont != null) bitmapFont.cleanup();
         if (hud != null) hud.cleanup();
         renderer.cleanup();

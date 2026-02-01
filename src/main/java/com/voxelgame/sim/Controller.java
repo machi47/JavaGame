@@ -75,6 +75,12 @@ public class Controller {
     }
 
     public void update(float dt) {
+        // When dead, only allow ESC for cursor unlock — no movement, camera, or actions
+        if (player.isDead()) {
+            handleEscapeOnly();
+            return;
+        }
+
         // Drain agent actions first (they set state that movement reads)
         if (agentActionQueue != null) {
             drainAgentActions();
@@ -330,13 +336,34 @@ public class Controller {
     // ---- Mode toggles ----
 
     private void handleModeToggles() {
-        // F = toggle fly mode (F3 = debug overlay, handled in GameLoop)
+        // F = toggle fly mode (gated by game mode — only creative allows flight)
         if (Input.isKeyPressed(GLFW_KEY_F)) {
-            player.toggleFlyMode();
-            System.out.println("Fly mode: " + (player.isFlyMode() ? "ON" : "OFF"));
+            if (player.getGameMode().isFlightAllowed() || player.isFlyMode()) {
+                player.toggleFlyMode();
+                System.out.println("Fly mode: " + (player.isFlyMode() ? "ON" : "OFF"));
+            } else {
+                System.out.println("Fly mode not available in " + player.getGameMode() + " mode");
+            }
+        }
+
+        // F4 = cycle game mode
+        if (Input.isKeyPressed(GLFW_KEY_F4)) {
+            GameMode next = player.getGameMode().next();
+            player.setGameMode(next);
         }
 
         // ESC = toggle cursor lock
+        if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
+            if (Input.isCursorLocked()) {
+                Input.unlockCursor();
+            } else {
+                Input.lockCursor();
+            }
+        }
+    }
+
+    /** When dead — only process ESC key. */
+    private void handleEscapeOnly() {
         if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
             if (Input.isCursorLocked()) {
                 Input.unlockCursor();

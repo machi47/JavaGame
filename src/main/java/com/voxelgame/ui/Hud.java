@@ -1,6 +1,7 @@
 package com.voxelgame.ui;
 
 import com.voxelgame.render.Shader;
+import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.Player;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
@@ -10,8 +11,9 @@ import java.nio.FloatBuffer;
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * Heads-up display. Renders a crosshair at screen center
- * and a hotbar at the bottom center showing 9 block slots.
+ * Heads-up display. Renders a crosshair at screen center,
+ * a hotbar at the bottom center showing 9 block slots,
+ * and a health bar (hearts) above the hotbar in survival modes.
  * Uses a simple ui shader (vec2 position → uProjection, flat uColor).
  */
 public class Hud {
@@ -26,6 +28,12 @@ public class Hud {
     private static final float PREVIEW_SIZE = 28.0f;
     private static final float BORDER = 2.0f;
     private static final float SELECTED_BORDER = 3.0f;
+
+    // Health bar dimensions (in pixels)
+    private static final float HEART_SIZE = 12.0f;
+    private static final float HEART_GAP = 2.0f;
+    private static final float HEART_MARGIN_ABOVE_HOTBAR = 6.0f;
+    private static final int   HEARTS_COUNT = 10; // 10 hearts = 20 HP (2 HP per heart)
 
     /**
      * Approximate flat colors for each block ID used in the hotbar preview.
@@ -111,7 +119,15 @@ public class Hud {
         uiShader.bind();
 
         renderCrosshair();
-        if (player != null) renderHotbar(player);
+        if (player != null) {
+            renderHotbar(player);
+            // Only render health bar in non-creative modes
+            if (player.getGameMode() != GameMode.CREATIVE) {
+                renderHealthBar(player);
+            }
+            // Render damage flash overlay
+            renderDamageFlash(player);
+        }
 
         uiShader.unbind();
     }
@@ -163,6 +179,62 @@ public class Hud {
                 strokeRect(sx, y0, SLOT_SIZE, SLOT_SIZE, BORDER, 0.5f, 0.5f, 0.5f, 0.6f);
             }
         }
+    }
+
+    /* ---- Health bar (hearts above hotbar) ---- */
+
+    private void renderHealthBar(Player player) {
+        glBindVertexArray(quadVao);
+
+        float health = player.getHealth();
+
+        // Position hearts above the hotbar, left-aligned with hotbar start
+        float totalHotbarW = Player.HOTBAR_SIZE * SLOT_SIZE + (Player.HOTBAR_SIZE - 1) * SLOT_GAP;
+        float hotbarX0 = (sw - totalHotbarW) / 2.0f;
+        float heartsY = HOTBAR_MARGIN_BOTTOM + SLOT_SIZE + HEART_MARGIN_ABOVE_HOTBAR;
+
+        for (int i = 0; i < HEARTS_COUNT; i++) {
+            float hx = hotbarX0 + i * (HEART_SIZE + HEART_GAP);
+
+            // Each heart represents 2 HP
+            float heartHP = (i + 1) * 2.0f;
+            float prevHP  = i * 2.0f;
+
+            // Heart container (dark background)
+            fillRect(hx, heartsY, HEART_SIZE, HEART_SIZE, 0.15f, 0.05f, 0.05f, 0.8f);
+            strokeRect(hx, heartsY, HEART_SIZE, HEART_SIZE, 1.0f, 0.3f, 0.1f, 0.1f, 0.9f);
+
+            if (health >= heartHP) {
+                // Full heart
+                float inset = 2.0f;
+                fillRect(hx + inset, heartsY + inset,
+                         HEART_SIZE - inset * 2, HEART_SIZE - inset * 2,
+                         0.85f, 0.1f, 0.1f, 1.0f);
+            } else if (health > prevHP) {
+                // Half heart — fill left portion proportionally
+                float inset = 2.0f;
+                float fraction = (health - prevHP) / 2.0f;
+                float fillW = (HEART_SIZE - inset * 2) * fraction;
+                fillRect(hx + inset, heartsY + inset,
+                         fillW, HEART_SIZE - inset * 2,
+                         0.85f, 0.1f, 0.1f, 1.0f);
+            }
+            // else: empty heart (just the container)
+        }
+    }
+
+    /* ---- Damage flash (red screen tint on hit) ---- */
+
+    private void renderDamageFlash(Player player) {
+        float intensity = player.getDamageFlashIntensity();
+        if (intensity <= 0) return;
+
+        glBindVertexArray(quadVao);
+
+        // Full-screen red tint
+        setProjection(new Matrix4f().ortho(0, 1, 0, 1, -1, 1));
+        uiShader.setVec4("uColor", 0.8f, 0.0f, 0.0f, 0.3f * intensity);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
     /* ---- Drawing helpers (unit-quad based) ---- */

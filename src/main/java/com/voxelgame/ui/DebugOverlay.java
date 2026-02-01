@@ -78,6 +78,8 @@ public class DebugOverlay {
                 player.isOnGround() ? "YES" : "NO",
                 sprinting ? "YES" : "NO"),
             String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
+            String.format("Mode: %s  HP: %.1f/%.1f  (F4=cycle mode)",
+                player.getGameMode(), player.getHealth(), player.getMaxHealth()),
         };
 
         // Render each line with shadow for readability

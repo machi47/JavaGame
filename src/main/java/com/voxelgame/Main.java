@@ -17,6 +17,7 @@ public class Main {
 
         boolean automationMode = false;
         boolean agentServerMode = false;
+        boolean autoTestMode = false;
         String scriptPath = null;
 
         // Parse command-line arguments
@@ -24,6 +25,7 @@ public class Main {
             switch (args[i]) {
                 case "--automation" -> automationMode = true;
                 case "--agent-server" -> agentServerMode = true;
+                case "--auto-test" -> autoTestMode = true;
                 case "--script" -> {
                     if (i + 1 < args.length) {
                         scriptPath = args[++i];
@@ -81,6 +83,7 @@ public class Main {
         GameLoop loop = new GameLoop();
         loop.setAutomationMode(automationMode);
         loop.setAgentServerMode(agentServerMode);
+        loop.setAutoTestMode(autoTestMode);
         loop.setScriptPath(scriptPath);
         loop.run();
     }
