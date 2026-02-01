@@ -9,20 +9,32 @@ import com.voxelgame.world.*;
  */
 public class TerrainTest {
     public static void main(String[] args) {
-        long seed = 12345L;
+        long seed = Long.parseLong(args.length > 0 ? args[0] : "12345");
         GenConfig config = GenConfig.defaultConfig();
         GenContext context = new GenContext(seed, config);
         Infdev611TerrainPass terrain = new Infdev611TerrainPass(seed);
         context.setInfdev611Terrain(terrain);
 
-        // Test height at several points
-        System.out.println("=== Terrain Height Sample ===");
-        for (int x = -50; x <= 50; x += 10) {
-            for (int z = -50; z <= 50; z += 10) {
+        // Test height at several points (wider area for ocean detection)
+        System.out.println("=== Terrain Height Sample (wider area) ===");
+        int belowSea = 0, aboveSea = 0, atSea = 0, total = 0;
+        int minH = 999, maxH = 0;
+        for (int x = -200; x <= 200; x += 5) {
+            for (int z = -200; z <= 200; z += 5) {
                 int h = terrain.getTerrainHeight(x, z);
-                System.out.printf("(%4d, %4d) height=%d%n", x, z, h);
+                if (h < 64) belowSea++;
+                else if (h == 64) atSea++;
+                else aboveSea++;
+                if (h < minH) minH = h;
+                if (h > maxH) maxH = h;
+                total++;
             }
         }
+        System.out.printf("Total samples: %d%n", total);
+        System.out.printf("Below sea level: %d (%.1f%%)%n", belowSea, 100.0 * belowSea / total);
+        System.out.printf("At sea level:    %d (%.1f%%)%n", atSea, 100.0 * atSea / total);
+        System.out.printf("Above sea level: %d (%.1f%%)%n", aboveSea, 100.0 * aboveSea / total);
+        System.out.printf("Height range: %d to %d%n", minH, maxH);
 
         // Generate a chunk
         System.out.println("\n=== Generating chunk at (0,0) ===");
