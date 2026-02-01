@@ -13,6 +13,9 @@ import com.voxelgame.render.Renderer;
 import com.voxelgame.save.SaveManager;
 import com.voxelgame.save.WorldMeta;
 import com.voxelgame.sim.BlockBreakProgress;
+import com.voxelgame.sim.Boat;
+import com.voxelgame.sim.Chest;
+import com.voxelgame.sim.ChestManager;
 import com.voxelgame.sim.Controller;
 import com.voxelgame.sim.Difficulty;
 import com.voxelgame.sim.Entity;
@@ -20,15 +23,18 @@ import com.voxelgame.sim.EntityManager;
 import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.ItemEntity;
 import com.voxelgame.sim.ItemEntityManager;
+import com.voxelgame.sim.Minecart;
 import com.voxelgame.sim.MobSpawner;
 import com.voxelgame.sim.Physics;
 import com.voxelgame.sim.Player;
+import com.voxelgame.sim.TNTEntity;
 import com.voxelgame.sim.ToolItem;
 import com.voxelgame.sim.Inventory;
 import com.voxelgame.ui.BitmapFont;
 import com.voxelgame.ui.DeathScreen;
 import com.voxelgame.ui.DebugOverlay;
 import com.voxelgame.ui.Hud;
+import com.voxelgame.ui.ChestScreen;
 import com.voxelgame.ui.InventoryScreen;
 import com.voxelgame.ui.MainMenuScreen;
 import com.voxelgame.ui.PauseMenuScreen;
@@ -100,6 +106,7 @@ public class GameLoop {
     private BlockHighlight blockHighlight;
     private DeathScreen deathScreen;
     private InventoryScreen inventoryScreen;
+    private ChestScreen chestScreen;
 
     // Survival mechanics
     private BlockBreakProgress blockBreakProgress;
@@ -111,6 +118,7 @@ public class GameLoop {
     private EntityManager entityManager;
     private MobSpawner mobSpawner;
     private EntityRenderer entityRenderer;
+    private ChestManager chestManager;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -412,9 +420,15 @@ public class GameLoop {
             }
         }
 
+        // Only populate inventory for creative mode — survival starts empty
+        if (player.getGameMode() == GameMode.CREATIVE) {
+            player.initCreativeInventory();
+        }
+
         // UI
         hud = new Hud();
         hud.init();
+        hud.setFont(bitmapFont);
         debugOverlay = new DebugOverlay(bitmapFont);
         deathScreen = new DeathScreen(bitmapFont);
         deathScreen.init();
@@ -424,6 +438,10 @@ public class GameLoop {
         inventoryScreen = new InventoryScreen();
         inventoryScreen.init(bitmapFont);
         controller.setInventoryScreen(inventoryScreen);
+
+        chestScreen = new ChestScreen();
+        chestScreen.init(bitmapFont);
+        chestManager = new ChestManager();
 
         blockBreakProgress = new BlockBreakProgress();
         itemEntityManager = new ItemEntityManager();
@@ -492,6 +510,7 @@ public class GameLoop {
         if (blockHighlight != null) blockHighlight.cleanup();
         if (deathScreen != null) deathScreen.cleanup();
         if (inventoryScreen != null) inventoryScreen.cleanup();
+        if (chestScreen != null) chestScreen.cleanup();
         if (entityRenderer != null) entityRenderer.cleanup();
         if (itemEntityRenderer != null) itemEntityRenderer.cleanup();
         if (hud != null) hud.cleanup();
@@ -509,6 +528,8 @@ public class GameLoop {
         blockHighlight = null;
         deathScreen = null;
         inventoryScreen = null;
+        chestScreen = null;
+        chestManager = null;
         blockBreakProgress = null;
         itemEntityManager = null;
         itemEntityRenderer = null;
@@ -705,9 +726,12 @@ public class GameLoop {
     private void updateAndRenderGame(int w, int h, float dt) {
         if (!gameInitialized) return;
 
-        // Handle ESC → pause
+        // Handle ESC → close screens or pause
         if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
-            if (inventoryScreen != null && inventoryScreen.isOpen()) {
+            if (chestScreen != null && chestScreen.isOpen()) {
+                chestScreen.close(player.getInventory());
+                Input.lockCursor();
+            } else if (inventoryScreen != null && inventoryScreen.isOpen()) {
                 inventoryScreen.close(player.getInventory());
                 Input.lockCursor();
             } else {
@@ -756,8 +780,15 @@ public class GameLoop {
         entityManager.update(dt, world, player, itemEntityManager);
         mobSpawner.update(dt, world, player, entityManager, worldTime);
 
+        // Process TNT chain reactions
+        for (TNTEntity chain : TNTEntity.drainPendingChainTNT()) {
+            chain.setExplosionCallback(makeTNTCallback());
+            entityManager.addEntity(chain);
+        }
+
         // Raycast
-        if (!player.isDead() && !controller.isInventoryOpen()) {
+        boolean anyScreenOpen = controller.isInventoryOpen() || (chestScreen != null && chestScreen.isOpen());
+        if (!player.isDead() && !anyScreenOpen) {
             currentHit = Raycast.cast(
                 world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
             );
@@ -775,6 +806,15 @@ public class GameLoop {
                 inventoryScreen.handleClick(player.getInventory(),
                     Input.getMouseX(), Input.getMouseY(), w, h,
                     Input.isKeyDown(GLFW_KEY_LEFT_SHIFT));
+            }
+        }
+
+        // Chest screen clicks + mouse tracking
+        if (chestScreen != null && chestScreen.isVisible()) {
+            chestScreen.updateMouse(Input.getMouseX(), Input.getMouseY(), h);
+            if (Input.isLeftMouseClicked()) {
+                chestScreen.handleClick(player.getInventory(),
+                    Input.getMouseX(), Input.getMouseY(), w, h);
             }
         }
 
@@ -844,6 +884,10 @@ public class GameLoop {
 
         if (inventoryScreen.isVisible()) {
             inventoryScreen.render(w, h, player.getInventory());
+        }
+
+        if (chestScreen != null && chestScreen.isVisible()) {
+            chestScreen.render(w, h, player.getInventory());
         }
 
         if (player.isDead()) {
@@ -960,33 +1004,82 @@ public class GameLoop {
             }
         }
 
-        // Block Placing (Right Click)
+        // Block Placing / Interaction (Right Click)
         boolean rightClick = agentUse || (Input.isCursorLocked() && Input.isRightMouseClicked());
 
-        if (rightClick && currentHit != null) {
-            int px = currentHit.x() + currentHit.nx();
-            int py = currentHit.y() + currentHit.ny();
-            int pz = currentHit.z() + currentHit.nz();
-            int placedBlockId = player.getSelectedBlock();
+        if (rightClick) {
+            // First: check if we right-clicked an entity (boat/minecart)
+            Entity hitEntity = entityManager.raycastEntity(
+                player.getCamera().getPosition(), player.getCamera().getFront(), 4.0f);
 
-            if (placedBlockId > 0 && Blocks.get(placedBlockId).solid()) {
-                boolean canPlace;
+            if (hitEntity instanceof Boat boat && !player.isMounted()) {
+                boat.mount();
+                player.mount(boat);
+            } else if (hitEntity instanceof Minecart cart && !player.isMounted()) {
+                cart.mount();
+                player.mount(cart);
+            } else if (currentHit != null) {
+                int hitBlockId = world.getBlock(currentHit.x(), currentHit.y(), currentHit.z());
 
-                if (isCreative) {
-                    canPlace = true;
+                // Check if we right-clicked a chest → open UI
+                if (hitBlockId == Blocks.CHEST.id()) {
+                    Chest chest = chestManager.getChestAt(currentHit.x(), currentHit.y(), currentHit.z());
+                    if (chest == null) {
+                        // Create chest tile entity if missing
+                        chest = chestManager.createChest(currentHit.x(), currentHit.y(), currentHit.z());
+                    }
+                    chestScreen.open(chest);
+                    Input.unlockCursor();
                 } else {
-                    canPlace = player.consumeSelectedBlock();
-                }
+                    // Normal block placement
+                    int px = currentHit.x() + currentHit.nx();
+                    int py = currentHit.y() + currentHit.ny();
+                    int pz = currentHit.z() + currentHit.nz();
+                    int placedBlockId = player.getSelectedBlock();
 
-                if (canPlace) {
-                    world.setBlock(px, py, pz, placedBlockId);
-                    Set<ChunkPos> affected = Lighting.onBlockPlaced(world, px, py, pz);
-                    chunkManager.rebuildMeshAt(px, py, pz);
-                    chunkManager.rebuildChunks(affected);
+                    if (placedBlockId > 0 && Blocks.get(placedBlockId).solid()) {
+                        boolean canPlace;
 
-                    if (agentUse && agentActionQueue != null) {
-                        agentActionQueue.setLastResult(new ActionQueue.ActionResult(
-                            "action_use", true, Blocks.get(placedBlockId).name(), px, py, pz));
+                        if (isCreative) {
+                            canPlace = true;
+                        } else {
+                            canPlace = player.consumeSelectedBlock();
+                        }
+
+                        if (canPlace) {
+                            world.setBlock(px, py, pz, placedBlockId);
+                            Set<ChunkPos> affected = Lighting.onBlockPlaced(world, px, py, pz);
+                            chunkManager.rebuildMeshAt(px, py, pz);
+                            chunkManager.rebuildChunks(affected);
+
+                            // If we placed a chest, create its tile entity
+                            if (placedBlockId == Blocks.CHEST.id()) {
+                                chestManager.createChest(px, py, pz);
+                            }
+
+                            if (agentUse && agentActionQueue != null) {
+                                agentActionQueue.setLastResult(new ActionQueue.ActionResult(
+                                    "action_use", true, Blocks.get(placedBlockId).name(), px, py, pz));
+                            }
+                        }
+                    } else if (placedBlockId == Blocks.BOAT_ITEM.id()) {
+                        // Place boat entity on water
+                        int px = currentHit.x() + currentHit.nx();
+                        int py = currentHit.y() + currentHit.ny();
+                        int pz = currentHit.z() + currentHit.nz();
+                        Boat boat = new Boat(px + 0.5f, py, pz + 0.5f);
+                        entityManager.addEntity(boat);
+                        if (!isCreative) player.consumeSelectedBlock();
+                        System.out.println("[Boat] Placed boat at " + px + ", " + py + ", " + pz);
+                    } else if (placedBlockId == Blocks.MINECART_ITEM.id()) {
+                        // Place minecart entity on rail
+                        int px = currentHit.x() + currentHit.nx();
+                        int py = currentHit.y() + currentHit.ny();
+                        int pz = currentHit.z() + currentHit.nz();
+                        Minecart cart = new Minecart(px + 0.5f, py, pz + 0.5f);
+                        entityManager.addEntity(cart);
+                        if (!isCreative) player.consumeSelectedBlock();
+                        System.out.println("[Minecart] Placed minecart at " + px + ", " + py + ", " + pz);
                     }
                 }
             }
@@ -999,6 +1092,34 @@ public class GameLoop {
     private void breakBlock(int bx, int by, int bz, int blockId, boolean spawnDrops) {
         Block block = Blocks.get(blockId);
 
+        // TNT: ignite instead of break
+        if (blockId == Blocks.TNT.id()) {
+            world.setBlock(bx, by, bz, 0);
+            Set<ChunkPos> affected = Lighting.onBlockRemoved(world, bx, by, bz);
+            chunkManager.rebuildMeshAt(bx, by, bz);
+            chunkManager.rebuildChunks(affected);
+
+            TNTEntity tnt = new TNTEntity(bx + 0.5f, by, bz + 0.5f);
+            tnt.setWorldRef(world);
+            tnt.setExplosionCallback(makeTNTCallback());
+            entityManager.addEntity(tnt);
+            System.out.println("[TNT] Ignited at (" + bx + ", " + by + ", " + bz + ")");
+            return;
+        }
+
+        // Chest: drop all contents
+        if (blockId == Blocks.CHEST.id() && spawnDrops) {
+            Chest chest = chestManager.removeChest(bx, by, bz);
+            if (chest != null) {
+                Inventory.ItemStack[] drops = chest.dropAll();
+                for (Inventory.ItemStack stack : drops) {
+                    if (stack != null && !stack.isEmpty()) {
+                        itemEntityManager.spawnDrop(stack.getBlockId(), stack.getCount(), bx, by, bz);
+                    }
+                }
+            }
+        }
+
         world.setBlock(bx, by, bz, 0);
         Set<ChunkPos> affected = Lighting.onBlockRemoved(world, bx, by, bz);
         chunkManager.rebuildMeshAt(bx, by, bz);
@@ -1010,6 +1131,36 @@ public class GameLoop {
                 itemEntityManager.spawnDrop(dropId, 1, bx, by, bz);
             }
         }
+    }
+
+    /**
+     * Create TNT explosion callback for chunk rebuilding.
+     */
+    private TNTEntity.ExplosionCallback makeTNTCallback() {
+        return new TNTEntity.ExplosionCallback() {
+            @Override
+            public void onBlockDestroyed(int x, int y, int z) {
+                chunkManager.rebuildMeshAt(x, y, z);
+
+                // If a chest was destroyed, remove it and drop items
+                if (chestManager != null) {
+                    Chest chest = chestManager.removeChest(x, y, z);
+                    if (chest != null) {
+                        Inventory.ItemStack[] drops = chest.dropAll();
+                        for (Inventory.ItemStack stack : drops) {
+                            if (stack != null && !stack.isEmpty()) {
+                                itemEntityManager.spawnDrop(stack.getBlockId(), stack.getCount(), x, y, z);
+                            }
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void rebuildChunks(Set<ChunkPos> chunks) {
+                chunkManager.rebuildChunks(chunks);
+            }
+        };
     }
 
     // ---- Auto-test ----

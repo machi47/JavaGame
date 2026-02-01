@@ -40,6 +40,12 @@ public class Hud {
     private static final float BREAK_BAR_HEIGHT = 4.0f;
     private static final float BREAK_BAR_OFFSET_Y = 20.0f;
 
+    // ---- Oxygen bar constants ----
+    private static final float BUBBLE_SIZE = 10.0f;
+    private static final float BUBBLE_GAP = 2.0f;
+    private static final int   MAX_BUBBLES = 10;
+    private static final float BUBBLE_MARGIN_ABOVE_HEARTS = 4.0f;
+
     private static final float[][] BLOCK_COLORS = {
         {0.0f, 0.0f, 0.0f, 0.0f},       //  0 AIR
         {0.47f, 0.47f, 0.47f, 1.0f},     //  1 STONE
@@ -67,6 +73,11 @@ public class Hud {
         {0.50f, 0.50f, 0.52f, 1.0f},     // 23 STONE_PICKAXE
         {0.48f, 0.48f, 0.50f, 1.0f},     // 24 STONE_AXE
         {0.46f, 0.46f, 0.48f, 1.0f},     // 25 STONE_SHOVEL
+        {0.60f, 0.40f, 0.20f, 1.0f},     // 26 CHEST
+        {0.45f, 0.45f, 0.45f, 1.0f},     // 27 RAIL
+        {0.85f, 0.20f, 0.15f, 1.0f},     // 28 TNT
+        {0.55f, 0.35f, 0.15f, 1.0f},     // 29 BOAT
+        {0.50f, 0.50f, 0.55f, 1.0f},     // 30 MINECART
     };
 
     private Shader uiShader;
@@ -147,8 +158,14 @@ public class Hud {
             renderHotbar(player);
             if (player.getGameMode() != GameMode.CREATIVE) {
                 renderHealthBar(player);
+                if (player.isHeadUnderwater()) {
+                    renderOxygenBar(player);
+                }
             }
             renderDamageFlash(player);
+            if (player.isInWater()) {
+                renderWaterOverlay();
+            }
         }
 
         uiShader.unbind();
@@ -254,12 +271,16 @@ public class Hud {
                 if (!stack.hasDurability() && stack.getCount() > 1 && player.getGameMode() != GameMode.CREATIVE && font != null) {
                     uiShader.unbind();
                     String countStr = String.valueOf(stack.getCount());
-                    float textX = sx + SLOT_SIZE - 6 - countStr.length() * 7;
-                    float textY = y0 + 3;
+                    float textScale = 1.5f;
+                    float charW = 8 * textScale;
+                    float charH = 8 * textScale;
+                    float textX = sx + SLOT_SIZE - charW * countStr.length() - 2;
+                    // Convert OpenGL Y-up to screen Y-down for BitmapFont; position at bottom-right of slot
+                    float textY = sh - y0 - charH - 2;
                     // Shadow
-                    font.drawText(countStr, textX + 1, textY + 1, 1.5f, sw, sh,
+                    font.drawText(countStr, textX + 1, textY + 1, textScale, sw, sh,
                                  0.0f, 0.0f, 0.0f, 0.8f);
-                    font.drawText(countStr, textX, textY, 1.5f, sw, sh,
+                    font.drawText(countStr, textX, textY, textScale, sw, sh,
                                  1.0f, 1.0f, 1.0f, 1.0f);
                     uiShader.bind();
                     glBindVertexArray(quadVao);
@@ -308,6 +329,60 @@ public class Hud {
                          0.85f, 0.1f, 0.1f, 1.0f);
             }
         }
+    }
+
+    /* ---- Oxygen bar (bubbles above hearts) ---- */
+
+    private void renderOxygenBar(Player player) {
+        glBindVertexArray(quadVao);
+
+        float oxygen = player.getOxygen();
+        float maxOxygen = player.getMaxOxygen();
+        float oxygenFrac = oxygen / maxOxygen;
+
+        // Position above hearts
+        float totalHotbarW = Player.HOTBAR_SIZE * SLOT_SIZE + (Player.HOTBAR_SIZE - 1) * SLOT_GAP;
+        float hotbarX0 = (sw - totalHotbarW) / 2.0f;
+        float heartsY = HOTBAR_MARGIN_BOTTOM + SLOT_SIZE + HEART_MARGIN_ABOVE_HOTBAR;
+        float bubblesY = heartsY + HEART_SIZE + BUBBLE_MARGIN_ABOVE_HEARTS;
+
+        int fullBubbles = (int) (oxygenFrac * MAX_BUBBLES);
+        float partialFrac = (oxygenFrac * MAX_BUBBLES) - fullBubbles;
+
+        for (int i = 0; i < MAX_BUBBLES; i++) {
+            float bx = hotbarX0 + i * (BUBBLE_SIZE + BUBBLE_GAP);
+
+            // Background
+            fillRect(bx, bubblesY, BUBBLE_SIZE, BUBBLE_SIZE, 0.05f, 0.1f, 0.2f, 0.6f);
+
+            if (i < fullBubbles) {
+                // Full bubble
+                float inset = 2.0f;
+                fillRect(bx + inset, bubblesY + inset,
+                         BUBBLE_SIZE - inset * 2, BUBBLE_SIZE - inset * 2,
+                         0.3f, 0.6f, 0.9f, 1.0f);
+            } else if (i == fullBubbles && partialFrac > 0.1f) {
+                // Partial bubble
+                float inset = 2.0f;
+                float fillW = (BUBBLE_SIZE - inset * 2) * partialFrac;
+                fillRect(bx + inset, bubblesY + inset,
+                         fillW, BUBBLE_SIZE - inset * 2,
+                         0.3f, 0.6f, 0.9f, 0.7f);
+            }
+
+            // Border
+            strokeRect(bx, bubblesY, BUBBLE_SIZE, BUBBLE_SIZE, 1.0f,
+                       0.2f, 0.4f, 0.6f, 0.8f);
+        }
+    }
+
+    /* ---- Water overlay (blue tint when swimming) ---- */
+
+    private void renderWaterOverlay() {
+        glBindVertexArray(quadVao);
+        setProjection(new Matrix4f().ortho(0, 1, 0, 1, -1, 1));
+        uiShader.setVec4("uColor", 0.0f, 0.1f, 0.4f, 0.15f);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
     }
 
     /* ---- Damage flash ---- */

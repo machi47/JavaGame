@@ -62,17 +62,24 @@ public class Player {
     private float attackCooldown = 0.0f;
     private static final float ATTACK_COOLDOWN_TIME = 0.4f;
 
+    // ---- Swimming / Water state ----
+    private boolean inWater = false;
+    private boolean headUnderwater = false;
+    private float oxygen = Physics.MAX_OXYGEN;
+
+    // ---- Mounted entity (boat / minecart) ----
+    private Entity mountedEntity = null;
+
     public Player() {
         this.camera = new Camera();
         camera.updateVectors();
-        initHotbar();
     }
 
     /**
      * Initialize the hotbar with default creative-mode block palette.
-     * In survival mode, the inventory starts empty — this gives a starter kit.
+     * Only called for creative mode — survival starts with empty inventory.
      */
-    private void initHotbar() {
+    public void initCreativeInventory() {
         // Creative mode palette (hotbar shows block types for quick placement)
         inventory.setSlot(0, new Inventory.ItemStack(Blocks.STONE.id(), 64));
         inventory.setSlot(1, new Inventory.ItemStack(Blocks.COBBLESTONE.id(), 64));
@@ -379,6 +386,44 @@ public class Player {
     }
 
     public boolean isTrackingFall() { return trackingFall; }
+
+    // ================================================================
+    // Swimming / Water
+    // ================================================================
+
+    public boolean isInWater() { return inWater; }
+    public void setInWater(boolean inWater) { this.inWater = inWater; }
+
+    public boolean isHeadUnderwater() { return headUnderwater; }
+    public void setHeadUnderwater(boolean underwater) { this.headUnderwater = underwater; }
+
+    public float getOxygen() { return oxygen; }
+    public float getMaxOxygen() { return Physics.MAX_OXYGEN; }
+
+    /** Drain oxygen by dt seconds. */
+    public void drainOxygen(float dt) {
+        oxygen = Math.max(0, oxygen - dt);
+    }
+
+    /** Refill oxygen instantly (head above water). */
+    public void refillOxygen() {
+        oxygen = Physics.MAX_OXYGEN;
+    }
+
+    // ================================================================
+    // Mounted entity (boat / minecart)
+    // ================================================================
+
+    public Entity getMountedEntity() { return mountedEntity; }
+    public boolean isMounted() { return mountedEntity != null; }
+
+    public void mount(Entity entity) {
+        this.mountedEntity = entity;
+    }
+
+    public void dismount() {
+        this.mountedEntity = null;
+    }
 
     // ================================================================
     // Spawn point

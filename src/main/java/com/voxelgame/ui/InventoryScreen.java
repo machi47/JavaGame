@@ -56,6 +56,11 @@ public class InventoryScreen {
         {0.50f, 0.50f, 0.52f, 1.0f},
         {0.48f, 0.48f, 0.50f, 1.0f},
         {0.46f, 0.46f, 0.48f, 1.0f},
+        {0.60f, 0.40f, 0.20f, 1.0f},     // 26 CHEST
+        {0.45f, 0.45f, 0.45f, 1.0f},     // 27 RAIL
+        {0.85f, 0.20f, 0.15f, 1.0f},     // 28 TNT
+        {0.55f, 0.35f, 0.15f, 1.0f},     // 29 BOAT
+        {0.50f, 0.50f, 0.55f, 1.0f},     // 30 MINECART
     };
 
     private boolean visible = false;
@@ -355,14 +360,20 @@ public class InventoryScreen {
             renderResultText();
             if (heldItem != null && !heldItem.isEmpty() && heldItem.getCount() > 1 && !heldItem.hasDurability()) {
                 String cs = String.valueOf(heldItem.getCount());
-                float tx = mouseX - SLOT_SIZE / 2 + SLOT_SIZE - 8 * cs.length() - 2;
-                float ty = mouseY - SLOT_SIZE / 2 + 2;
-                font.drawText(cs, tx + 1, ty + 1, 1.5f, sw, sh, 0, 0, 0, 0.8f);
-                font.drawText(cs, tx, ty, 1.5f, sw, sh, 1, 1, 1, 1);
+                float textScale = 1.5f;
+                float charW = 8 * textScale;
+                float charH = 8 * textScale;
+                float tx = mouseX - SLOT_SIZE / 2 + SLOT_SIZE - charW * cs.length() - 2;
+                // Convert OpenGL Y-up to screen Y-down for BitmapFont
+                float ty = sh - (mouseY - SLOT_SIZE / 2) - charH - 2;
+                font.drawText(cs, tx + 1, ty + 1, textScale, sw, sh, 0, 0, 0, 0.8f);
+                font.drawText(cs, tx, ty, textScale, sw, sh, 1, 1, 1, 1);
             }
             if (heldItem != null && heldItem.hasDurability()) {
                 String name = ToolItem.getDisplayName(heldItem.getBlockId());
-                font.drawText(name, mouseX + SLOT_SIZE / 2 + 4, mouseY, 1.5f, sw, sh, 1, 1, 0.7f, 1);
+                // Convert OpenGL Y-up to screen Y-down for BitmapFont
+                float nameY = sh - mouseY - 6;
+                font.drawText(name, mouseX + SLOT_SIZE / 2 + 4, nameY, 1.5f, sw, sh, 1, 1, 0.7f, 1);
             }
         }
     }
@@ -487,10 +498,14 @@ public class InventoryScreen {
 
     private void renderCountText(float sx, float sy, int count) {
         String cs = String.valueOf(count);
-        float tx = sx + SLOT_SIZE - 8 * cs.length() - 2;
-        float ty = sy + 2;
-        font.drawText(cs, tx + 1, ty + 1, 1.5f, sw, sh, 0, 0, 0, 0.8f);
-        font.drawText(cs, tx, ty, 1.5f, sw, sh, 1, 1, 1, 1);
+        float textScale = 1.5f;
+        float charW = 8 * textScale;
+        float charH = 8 * textScale;
+        float tx = sx + SLOT_SIZE - charW * cs.length() - 2;
+        // Convert OpenGL Y-up to screen Y-down for BitmapFont; position at bottom-right of slot
+        float ty = sh - sy - charH - 2;
+        font.drawText(cs, tx + 1, ty + 1, textScale, sw, sh, 0, 0, 0, 0.8f);
+        font.drawText(cs, tx, ty, textScale, sw, sh, 1, 1, 1, 1);
     }
 
     private void fillRect(float x, float y, float w, float h,
