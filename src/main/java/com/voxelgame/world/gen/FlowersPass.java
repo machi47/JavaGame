@@ -28,9 +28,6 @@ public class FlowersPass implements GenPipeline.GenerationPass {
         // Check if this chunk gets a flower patch
         if (rng.nextDouble() > PATCH_CHANCE) return;
 
-        int chunkWorldX = chunk.getPos().worldX();
-        int chunkWorldZ = chunk.getPos().worldZ();
-
         // Pick patch center
         int centerX = 2 + rng.nextInt(WorldConstants.CHUNK_SIZE - 4);
         int centerZ = 2 + rng.nextInt(WorldConstants.CHUNK_SIZE - 4);

@@ -68,6 +68,12 @@ public class TerrainTest {
             System.out.printf("  z=%2d: y=%d%n", z, maxY);
         }
 
+        // Test spawn point finding
+        System.out.println("\n=== Spawn Point ===");
+        SpawnPointFinder.SpawnPoint sp = SpawnPointFinder.find(context);
+        System.out.printf("Spawn: (%.1f, %.1f, %.1f)%n", sp.x(), sp.y(), sp.z());
+        System.out.printf("Spawn terrain height: %d%n", terrain.getTerrainHeight((int)sp.x(), (int)sp.z()));
+
         System.out.println("\n=== Terrain Test Complete ===");
     }
 }
