@@ -52,6 +52,14 @@ public class GenContext {
     // Erosion noise — creates varied dirt depth
     private final OctaveNoise erosionNoise;
 
+    // Reference to the Infdev611 terrain pass (for height lookups)
+    private Infdev611TerrainPass infdev611Terrain;
+
+    /** Set the Infdev 611 terrain pass (called during pipeline construction). */
+    public void setInfdev611Terrain(Infdev611TerrainPass terrain) {
+        this.infdev611Terrain = terrain;
+    }
+
     public GenContext(long seed, GenConfig config) {
         this.seed = seed;
         this.config = config;
@@ -109,39 +117,25 @@ public class GenContext {
     /**
      * Compute terrain height at a world (x, z) coordinate.
      *
-     * InfDev 611 algorithm (adapted for normalized noise):
-     * Classic's octave-8 noise returns [-128, 128]. Our OctaveNoise normalizes to [-1, 1].
-     * We multiply by CLASSIC_AMPLITUDE (128) to match the Classic range.
-     *
-     * Input scaling: Classic uses x*1.3 with unnormalized noise that already has
-     * low-frequency components from persistence=2. Our noise has persistence=0.5
-     * (fine detail at higher frequencies), so we use a much lower input scale
-     * to get broad 80-100 block terrain features.
-     *
-     * Steps:
-     * 1. Scale inputs to ~0.01 for broad features (equivalent to Classic's behavior)
-     * 2. Sample combined noise fields and scale to Classic range [-128, 128]
-     * 3. heightLow  = raw1 / 6 - 4  →  range ~[-25, 17]
-     * 4. heightHigh = raw2 / 5 + 6  →  range ~[-20, 32]
-     * 5. Selector noise chooses between low and high
-     * 6. Halve result, dampen negatives
-     * 7. Add to water level (64)
+     * If the Infdev 611 terrain pass is available, delegates to its 3D density-based
+     * height calculation. Otherwise falls back to the legacy 2D heightmap.
      */
     public int getTerrainHeight(int worldX, int worldZ) {
-        // Input scaling: ~0.013 gives dominant features of ~80 blocks wavelength
-        // CombinedNoise warping adds extra variation at these scales
+        // Use Infdev 611 3D density terrain height if available
+        if (infdev611Terrain != null) {
+            return infdev611Terrain.getTerrainHeight(worldX, worldZ);
+        }
+
+        // Legacy fallback: 2D combined noise heightmap
         double sx = worldX * 0.013;
         double sz = worldZ * 0.013;
 
-        // Sample combined noise fields — normalized [-1, 1], then scale to Classic range
         double raw1 = combinedNoise1.eval2D(sx, sz) * CLASSIC_AMPLITUDE;
         double raw2 = combinedNoise2.eval2D(sx, sz) * CLASSIC_AMPLITUDE;
 
-        // Two height layers (Classic formula)
         double heightLow = raw1 / config.heightLowScale + config.heightLowOffset;
         double heightHigh = raw2 / config.heightHighScale + config.heightHighOffset;
 
-        // Selector noise: use lower frequency for broad region selection
         double selector = selectorNoise.eval2D(worldX * 0.005, worldZ * 0.005);
 
         double heightResult;
@@ -151,17 +145,13 @@ public class GenContext {
             heightResult = Math.max(heightLow, heightHigh);
         }
 
-        // Halve the result (Classic does this to bring to reasonable range)
         heightResult = heightResult / 2.0;
 
-        // Dampen negative values (prevents too-deep ocean floors)
         if (heightResult < 0) {
             heightResult = heightResult * 0.8;
         }
 
         int height = config.baseHeight + (int) heightResult;
-
-        // Clamp to valid range
         return Math.max(1, Math.min(height, WorldConstants.WORLD_HEIGHT - 2));
     }
 }

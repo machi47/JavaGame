@@ -5,13 +5,14 @@ import com.voxelgame.world.Chunk;
 import com.voxelgame.world.WorldConstants;
 
 /**
- * Cave carving pass. Uses multiple 3D Perlin noise systems to create
- * InfDev 611-style cave networks:
- * - Primary spaghetti caves (two noise fields, carve where both near zero)
- * - Secondary tunnel system at different frequency
- * - Large cavern rooms
+ * Cave carving pass. Uses 3D Perlin noise to create cave networks.
+ * Works with the 3D density terrain by scanning actual chunk blocks
+ * to find the surface, rather than relying on a height function.
+ *
+ * Cave types:
+ * - Primary spaghetti caves (two noise fields intersecting near zero)
  * - Vertical cave shafts
- * - Depth-dependent density (more caves deeper down)
+ * - Depth-dependent density (more caves deeper)
  */
 public class CarveCavesPass implements GenPipeline.GenerationPass {
 
@@ -26,34 +27,34 @@ public class CarveCavesPass implements GenPipeline.GenerationPass {
                 int worldX = chunkWorldX + lx;
                 int worldZ = chunkWorldZ + lz;
 
-                int surfaceHeight = context.getTerrainHeight(worldX, worldZ);
+                // Find actual surface by scanning down from top
+                int surfaceHeight = findSurfaceHeight(chunk, lx, lz);
 
-                // Carve from above bedrock up to below surface
+                // Don't carve above terrain or near surface
                 int maxCaveY = Math.min(surfaceHeight - config.caveSurfaceMargin,
                                         WorldConstants.WORLD_HEIGHT - 1);
 
                 for (int y = config.caveMinY; y <= maxCaveY; y++) {
-                    // Only carve solid blocks
                     int currentBlock = chunk.getBlock(lx, y, lz);
-                    if (currentBlock == Blocks.AIR.id() || currentBlock == Blocks.BEDROCK.id()) {
+                    if (currentBlock == Blocks.AIR.id() ||
+                        currentBlock == Blocks.BEDROCK.id() ||
+                        currentBlock == Blocks.WATER.id()) {
                         continue;
                     }
 
-                    // Depth factor: caves are more common deeper
-                    double depthRatio = 1.0 - ((double) y / surfaceHeight);
-                    double depthFactor = 0.5 + depthRatio * 0.5; // range [0.5, 1.0]
+                    // Depth factor: caves more common deeper
+                    double depthRatio = 1.0 - ((double) y / Math.max(surfaceHeight, 1));
+                    double depthFactor = 0.5 + depthRatio * 0.5;
 
                     boolean shouldCarve = false;
 
-                    // === Primary spaghetti caves ===
+                    // === Spaghetti caves ===
                     double freq = config.caveFreq;
                     double n1 = context.getCaveNoise1().eval3D(
                         worldX * freq, y * freq * 0.7, worldZ * freq);
                     double n2 = context.getCaveNoise2().eval3D(
                         worldX * freq + 500, y * freq * 0.7 + 500, worldZ * freq + 500);
 
-                    // Spaghetti: carve where BOTH noise values are near zero
-                    // Using y*0.7 makes caves wider than tall (oblate, like Classic)
                     double combined = n1 * n1 + n2 * n2;
                     double threshold = config.caveThreshold * depthFactor;
                     double thresholdSq = threshold * threshold * 0.25;
@@ -62,7 +63,7 @@ public class CarveCavesPass implements GenPipeline.GenerationPass {
                         shouldCarve = true;
                     }
 
-                    // === Secondary tunnel system (different frequency for interconnections) ===
+                    // === Secondary tunnel system ===
                     if (!shouldCarve) {
                         double freq2 = freq * 0.65;
                         double t1 = context.getCaveNoise2().eval3D(
@@ -76,20 +77,9 @@ public class CarveCavesPass implements GenPipeline.GenerationPass {
                         }
                     }
 
-                    // === Large cavern rooms (low frequency, wider threshold) ===
-                    if (!shouldCarve) {
-                        double roomFreq = freq * 0.35;
-                        double roomN = context.getCaveNoise1().eval3D(
-                            worldX * roomFreq + 1000, y * roomFreq * 0.5 + 1000, worldZ * roomFreq + 1000);
-                        if (Math.abs(roomN) < 0.06 * depthFactor) {
-                            shouldCarve = true;
-                        }
-                    }
-
                     // === Vertical cave shafts ===
                     if (!shouldCarve && y < surfaceHeight - 10) {
                         double vFreq = config.verticalCaveFreq;
-                        // Vertical shafts: sample 2D noise (x,z only) — same carve column top to bottom
                         double v1 = context.getCaveNoise3().eval3D(
                             worldX * vFreq, y * vFreq * 2.0, worldZ * vFreq);
                         double v2 = context.getCaveNoise3().eval3D(
@@ -102,14 +92,33 @@ public class CarveCavesPass implements GenPipeline.GenerationPass {
                     }
 
                     if (shouldCarve) {
-                        // Extra surface protection: don't carve within margin of surface
-                        if (y >= surfaceHeight - config.caveSurfaceMargin) {
-                            continue;
+                        // Don't carve through water or near surface
+                        if (y >= surfaceHeight - config.caveSurfaceMargin) continue;
+                        
+                        // Don't carve if there's water above (prevents draining oceans)
+                        if (y < WorldConstants.SEA_LEVEL) {
+                            int aboveBlock = chunk.getBlock(lx, y + 1, lz);
+                            if (aboveBlock == Blocks.WATER.id()) continue;
                         }
+                        
                         chunk.setBlock(lx, y, lz, Blocks.AIR.id());
                     }
                 }
             }
         }
+    }
+
+    /**
+     * Find the actual surface height by scanning the chunk column top-down.
+     * Returns the Y of the highest non-air, non-water block.
+     */
+    private int findSurfaceHeight(Chunk chunk, int lx, int lz) {
+        for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
+            int block = chunk.getBlock(lx, y, lz);
+            if (block != Blocks.AIR.id() && block != Blocks.WATER.id()) {
+                return y;
+            }
+        }
+        return 0;
     }
 }

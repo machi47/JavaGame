@@ -6,9 +6,12 @@ import com.voxelgame.world.Chunk;
 import com.voxelgame.world.WorldConstants;
 
 /**
- * Ore placement pass. Scatters ore veins (coal, iron, gold, diamond)
- * through stone at configured depth ranges and vein sizes.
- * Uses chunk-seeded RNG for deterministic placement.
+ * Ore placement pass matching Minecraft's Infdev 611 algorithm.
+ * Uses the classic Minecraft ore vein generation:
+ * - Generate a start and end point
+ * - Interpolate along a line between them
+ * - At each point, place a sphere of ore blocks
+ * - Sphere size varies along the line (thicker in middle, thinner at ends)
  */
 public class OreVeinsPass implements GenPipeline.GenerationPass {
 
@@ -36,41 +39,72 @@ public class OreVeinsPass implements GenPipeline.GenerationPass {
             int oy = minY + rng.nextInt(Math.max(1, maxY - minY));
             int oz = rng.nextInt(WorldConstants.CHUNK_SIZE);
 
-            // Place vein using a random walk from origin
+            // Place vein using Minecraft's classic blob shape
             placeVein(chunk, rng, oreId, ox, oy, oz, veinSize);
         }
     }
 
     /**
-     * Place a vein of ore blocks using a random walk from origin.
-     * Only replaces STONE blocks.
+     * Place a vein of ore blocks using Minecraft's classic blob algorithm.
+     * Creates a line segment with spherical ore placement along it.
+     * This matches the original ore generation from Infdev through Beta.
      */
     private void placeVein(Chunk chunk, RNG rng, int oreId,
                            int startX, int startY, int startZ, int size) {
-        int x = startX;
-        int y = startY;
-        int z = startZ;
-
+        // Generate random angles for the vein direction
+        double angle = rng.nextDouble() * Math.PI;
+        
+        // Start and end points offset from center
+        double x1 = startX + Math.sin(angle) * size / 8.0;
+        double x2 = startX - Math.sin(angle) * size / 8.0;
+        double z1 = startZ + Math.cos(angle) * size / 8.0;
+        double z2 = startZ - Math.cos(angle) * size / 8.0;
+        double y1 = startY + rng.nextInt(3) - 2;
+        double y2 = startY + rng.nextInt(3) - 2;
+        
+        // Interpolate along the line, placing spheres of ore
         for (int i = 0; i < size; i++) {
-            // Only place ore in stone
-            if (x >= 0 && x < WorldConstants.CHUNK_SIZE &&
-                y >= 1 && y < WorldConstants.WORLD_HEIGHT &&
-                z >= 0 && z < WorldConstants.CHUNK_SIZE) {
-
-                if (chunk.getBlock(x, y, z) == Blocks.STONE.id()) {
-                    chunk.setBlock(x, y, z, oreId);
+            double t = (double) i / (double) size;
+            
+            // Interpolate position
+            double px = x1 + (x2 - x1) * t;
+            double py = y1 + (y2 - y1) * t;
+            double pz = z1 + (z2 - z1) * t;
+            
+            // Radius varies: thicker in middle, thinner at ends
+            double radius = (Math.sin(t * Math.PI) * (rng.nextDouble() * size / 16.0 + 1.0)) + 0.5;
+            
+            // Place blocks in a sphere around this point
+            int minBX = (int) Math.floor(px - radius);
+            int maxBX = (int) Math.floor(px + radius);
+            int minBY = (int) Math.floor(py - radius);
+            int maxBY = (int) Math.floor(py + radius);
+            int minBZ = (int) Math.floor(pz - radius);
+            int maxBZ = (int) Math.floor(pz + radius);
+            
+            for (int bx = minBX; bx <= maxBX; bx++) {
+                double dx = (bx + 0.5 - px) / radius;
+                if (dx * dx >= 1.0) continue;
+                
+                for (int by = minBY; by <= maxBY; by++) {
+                    double dy = (by + 0.5 - py) / radius;
+                    if (dx * dx + dy * dy >= 1.0) continue;
+                    
+                    for (int bz = minBZ; bz <= maxBZ; bz++) {
+                        double dz = (bz + 0.5 - pz) / radius;
+                        if (dx * dx + dy * dy + dz * dz >= 1.0) continue;
+                        
+                        // Only place within chunk bounds and in stone
+                        if (bx >= 0 && bx < WorldConstants.CHUNK_SIZE &&
+                            by >= 1 && by < WorldConstants.WORLD_HEIGHT &&
+                            bz >= 0 && bz < WorldConstants.CHUNK_SIZE) {
+                            
+                            if (chunk.getBlock(bx, by, bz) == Blocks.STONE.id()) {
+                                chunk.setBlock(bx, by, bz, oreId);
+                            }
+                        }
+                    }
                 }
-            }
-
-            // Random walk to next block in the vein
-            int dir = rng.nextInt(6);
-            switch (dir) {
-                case 0 -> x++;
-                case 1 -> x--;
-                case 2 -> y++;
-                case 3 -> y--;
-                case 4 -> z++;
-                case 5 -> z--;
             }
         }
     }

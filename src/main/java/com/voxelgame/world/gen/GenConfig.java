@@ -37,11 +37,11 @@ public class GenConfig {
     public double verticalCaveFreq = 0.06;  // frequency for vertical cave shafts
     public double verticalCaveThreshold = 0.03; // narrow threshold for vertical shafts
 
-    // --- Ores ---
-    public int coalMinY = 5, coalMaxY = 80, coalVeinSize = 10, coalAttemptsPerChunk = 20;
-    public int ironMinY = 5, ironMaxY = 64, ironVeinSize = 6, ironAttemptsPerChunk = 12;
-    public int goldMinY = 5, goldMaxY = 32, goldVeinSize = 5, goldAttemptsPerChunk = 4;
-    public int diamondMinY = 5, diamondMaxY = 16, diamondVeinSize = 3, diamondAttemptsPerChunk = 2;
+    // --- Ores (authentic Infdev 611 values) ---
+    public int coalMinY = 0, coalMaxY = 128, coalVeinSize = 16, coalAttemptsPerChunk = 20;
+    public int ironMinY = 0, ironMaxY = 64, ironVeinSize = 8, ironAttemptsPerChunk = 20;
+    public int goldMinY = 0, goldMaxY = 32, goldVeinSize = 8, goldAttemptsPerChunk = 2;
+    public int diamondMinY = 0, diamondMaxY = 16, diamondVeinSize = 7, diamondAttemptsPerChunk = 1;
 
     // --- Trees (patch-based, InfDev style) ---
     public double treePatchChance = 0.55;   // chance per chunk of having a tree patch

@@ -46,16 +46,32 @@ public class GenPipeline {
 
     /**
      * Build the default pipeline with all passes in correct order.
+     * Uses authentic Infdev 611 3D density-based terrain generation.
      */
     public static GenPipeline createDefault(long seed) {
         GenConfig config = GenConfig.defaultConfig();
         GenContext context = new GenContext(seed, config);
         GenPipeline pipeline = new GenPipeline(context);
 
-        pipeline.addPass(new BaseTerrainPass());
-        pipeline.addPass(new SurfacePaintPass());
+        // Create the Infdev 611 terrain pass (3D density-based)
+        Infdev611TerrainPass terrainPass = new Infdev611TerrainPass(seed);
+
+        // Store terrain pass reference in context for height lookups
+        context.setInfdev611Terrain(terrainPass);
+
+        // Pipeline order:
+        // 1. 3D density terrain (stone/air)
+        // 2. Surface painting (grass/dirt/sand/beaches/bedrock/water)
+        // 3. Cave carving
+        // 4. Ore veins
+        // 5. Trees
+        // 6. Flowers
+        pipeline.addPass(terrainPass);
+        pipeline.addPass(new Infdev611SurfacePass(
+            terrainPass.getBeachNoise(),
+            terrainPass.getSurfaceNoise(),
+            seed));
         pipeline.addPass(new CarveCavesPass());
-        pipeline.addPass(new FillFluidsPass());
         pipeline.addPass(new OreVeinsPass());
         pipeline.addPass(new TreesPass());
         pipeline.addPass(new FlowersPass());
