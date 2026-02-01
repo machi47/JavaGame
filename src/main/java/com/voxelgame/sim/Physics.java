@@ -15,9 +15,10 @@ import org.joml.Vector3f;
  */
 public class Physics {
 
-    public static final float GRAVITY          = 32.0f;   // blocks/s²
-    public static final float TERMINAL_VELOCITY = 78.0f;  // blocks/s (max fall speed)
-    public static final float JUMP_VELOCITY     = 9.0f;   // blocks/s upward (~1.27 block jump)
+    // Authentic Minecraft Infdev 611 physics constants
+    public static final float GRAVITY          = 31.36f;  // blocks/s² (matches MC: 0.08 blocks/tick * 20²)
+    public static final float TERMINAL_VELOCITY = 78.4f;  // blocks/s (MC: 3.92 blocks/tick * 20)
+    public static final float JUMP_VELOCITY     = 8.4f;   // blocks/s upward (~1.25 block jump height)
 
     /** Minimum fall distance (blocks) before damage is applied. */
     private static final float FALL_DAMAGE_THRESHOLD = 3.0f;
