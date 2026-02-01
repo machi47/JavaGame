@@ -10,6 +10,7 @@ public final class ToolItem {
     public enum ToolTier {
         WOOD(60, 2.0f),
         STONE(132, 4.0f),
+        IRON(251, 6.0f),
         NONE(0, 1.0f);
 
         public final int durability;
@@ -47,6 +48,12 @@ public final class ToolItem {
         new ToolItem(Blocks.STONE_PICKAXE.id(),   ToolType.PICKAXE, ToolTier.STONE, "Stone Pickaxe"),
         new ToolItem(Blocks.STONE_AXE.id(),       ToolType.AXE,     ToolTier.STONE, "Stone Axe"),
         new ToolItem(Blocks.STONE_SHOVEL.id(),    ToolType.SHOVEL,  ToolTier.STONE, "Stone Shovel"),
+        new ToolItem(Blocks.IRON_PICKAXE.id(),    ToolType.PICKAXE, ToolTier.IRON, "Iron Pickaxe"),
+        new ToolItem(Blocks.IRON_AXE.id(),        ToolType.AXE,     ToolTier.IRON, "Iron Axe"),
+        new ToolItem(Blocks.IRON_SHOVEL.id(),     ToolType.SHOVEL,  ToolTier.IRON, "Iron Shovel"),
+        new ToolItem(Blocks.IRON_SWORD.id(),      ToolType.NONE,    ToolTier.IRON, "Iron Sword"),
+        new ToolItem(Blocks.WOODEN_SWORD.id(),    ToolType.NONE,    ToolTier.WOOD, "Wooden Sword"),
+        new ToolItem(Blocks.STONE_SWORD.id(),     ToolType.NONE,    ToolTier.STONE, "Stone Sword"),
     };
 
     public static boolean isTool(int blockId) { return get(blockId) != null; }
@@ -81,11 +88,12 @@ public final class ToolItem {
     public static BlockMaterial getBlockMaterial(int blockId) {
         if (blockId == Blocks.STONE.id() || blockId == Blocks.COBBLESTONE.id() ||
             blockId == Blocks.COAL_ORE.id() || blockId == Blocks.IRON_ORE.id() ||
-            blockId == Blocks.GOLD_ORE.id() || blockId == Blocks.DIAMOND_ORE.id()) {
+            blockId == Blocks.GOLD_ORE.id() || blockId == Blocks.DIAMOND_ORE.id() ||
+            blockId == Blocks.FURNACE.id()) {
             return BlockMaterial.STONE;
         }
         if (blockId == Blocks.LOG.id() || blockId == Blocks.PLANKS.id() ||
-            blockId == Blocks.CRAFTING_TABLE.id()) {
+            blockId == Blocks.CRAFTING_TABLE.id() || blockId == Blocks.CHEST.id()) {
             return BlockMaterial.WOOD;
         }
         if (blockId == Blocks.DIRT.id() || blockId == Blocks.GRASS.id() ||

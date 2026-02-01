@@ -91,6 +91,13 @@ public class WorldMeta {
     public float getPlayerHealth() { return playerHealth; }
     public void setPlayerHealth(float health) { this.playerHealth = health; }
 
+    // --- Player inventory ---
+
+    private String inventoryData = "";
+
+    public String getInventoryData() { return inventoryData; }
+    public void setInventoryData(String data) { this.inventoryData = data != null ? data : ""; }
+
     // --- Serialization ---
 
     /**
@@ -118,6 +125,9 @@ public class WorldMeta {
         props.setProperty("spawnY", Float.toString(spawnY));
         props.setProperty("spawnZ", Float.toString(spawnZ));
         props.setProperty("playerHealth", Float.toString(playerHealth));
+        if (inventoryData != null && !inventoryData.isEmpty()) {
+            props.setProperty("inventoryData", inventoryData);
+        }
 
         try (OutputStream os = new FileOutputStream(file.toFile())) {
             props.store(os, "VoxelGame World Metadata");
@@ -158,6 +168,7 @@ public class WorldMeta {
         meta.spawnY = Float.parseFloat(props.getProperty("spawnY", props.getProperty("playerY", "80")));
         meta.spawnZ = Float.parseFloat(props.getProperty("spawnZ", props.getProperty("playerZ", "0")));
         meta.playerHealth = Float.parseFloat(props.getProperty("playerHealth", "20.0"));
+        meta.inventoryData = props.getProperty("inventoryData", "");
 
         return meta;
     }

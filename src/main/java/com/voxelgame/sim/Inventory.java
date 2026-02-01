@@ -293,4 +293,64 @@ public class Inventory {
         }
         return count;
     }
+
+    // ================================================================
+    // Serialization for save/load
+    // ================================================================
+
+    /**
+     * Serialize inventory to a compact string.
+     * Format: "slot:blockId:count:durability:maxDurability;slot:..."
+     * Only non-empty slots are serialized.
+     */
+    public String serialize() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < TOTAL_SIZE; i++) {
+            if (slots[i] != null && !slots[i].isEmpty()) {
+                if (sb.length() > 0) sb.append(";");
+                sb.append(i).append(":")
+                  .append(slots[i].getBlockId()).append(":")
+                  .append(slots[i].getCount()).append(":")
+                  .append(slots[i].getDurability()).append(":")
+                  .append(slots[i].getMaxDurability());
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Deserialize inventory from a compact string.
+     * Clears all slots first, then populates from the string.
+     */
+    public void deserialize(String data) {
+        // Clear all slots
+        for (int i = 0; i < TOTAL_SIZE; i++) {
+            slots[i] = null;
+        }
+
+        if (data == null || data.isEmpty()) return;
+
+        String[] entries = data.split(";");
+        for (String entry : entries) {
+            try {
+                String[] parts = entry.split(":");
+                if (parts.length < 3) continue;
+                int slot = Integer.parseInt(parts[0]);
+                int blockId = Integer.parseInt(parts[1]);
+                int count = Integer.parseInt(parts[2]);
+                int durability = parts.length > 3 ? Integer.parseInt(parts[3]) : -1;
+                int maxDurability = parts.length > 4 ? Integer.parseInt(parts[4]) : -1;
+
+                if (slot >= 0 && slot < TOTAL_SIZE && blockId > 0 && count > 0) {
+                    if (durability >= 0 && maxDurability > 0) {
+                        slots[slot] = new ItemStack(blockId, durability, maxDurability);
+                    } else {
+                        slots[slot] = new ItemStack(blockId, count);
+                    }
+                }
+            } catch (NumberFormatException e) {
+                // Skip corrupted entries
+            }
+        }
+    }
 }

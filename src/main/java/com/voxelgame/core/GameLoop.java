@@ -24,17 +24,23 @@ import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.ItemEntity;
 import com.voxelgame.sim.ItemEntityManager;
 import com.voxelgame.sim.Minecart;
+import com.voxelgame.sim.Furnace;
+import com.voxelgame.sim.FurnaceManager;
 import com.voxelgame.sim.MobSpawner;
 import com.voxelgame.sim.Physics;
 import com.voxelgame.sim.Player;
 import com.voxelgame.sim.TNTEntity;
 import com.voxelgame.sim.ToolItem;
 import com.voxelgame.sim.Inventory;
+import com.voxelgame.sim.Furnace;
+import com.voxelgame.sim.FurnaceManager;
 import com.voxelgame.ui.BitmapFont;
 import com.voxelgame.ui.DeathScreen;
 import com.voxelgame.ui.DebugOverlay;
+import com.voxelgame.ui.FurnaceScreen;
 import com.voxelgame.ui.Hud;
 import com.voxelgame.ui.ChestScreen;
+import com.voxelgame.ui.FurnaceScreen;
 import com.voxelgame.ui.InventoryScreen;
 import com.voxelgame.ui.MainMenuScreen;
 import com.voxelgame.ui.PauseMenuScreen;
@@ -107,6 +113,7 @@ public class GameLoop {
     private DeathScreen deathScreen;
     private InventoryScreen inventoryScreen;
     private ChestScreen chestScreen;
+    private FurnaceScreen furnaceScreen;
 
     // Survival mechanics
     private BlockBreakProgress blockBreakProgress;
@@ -119,6 +126,7 @@ public class GameLoop {
     private MobSpawner mobSpawner;
     private EntityRenderer entityRenderer;
     private ChestManager chestManager;
+    private FurnaceManager furnaceManager;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -135,6 +143,10 @@ public class GameLoop {
 
     // Auto-save timer
     private float autoSaveTimer = 0;
+
+    // Furnace tick timer (20 ticks/second = 0.05s per tick)
+    private float furnaceTickTimer = 0;
+    private static final float FURNACE_TICK_INTERVAL = 0.05f;
 
     // Auto-test mode (for automated screenshot testing)
     private boolean autoTestMode = false;
@@ -405,6 +417,13 @@ public class GameLoop {
                     if (!meta.getGameMode().isInvulnerable()) {
                         player.restoreHealth(meta.getPlayerHealth());
                     }
+                    // Restore inventory
+                    String invData = meta.getInventoryData();
+                    if (invData != null && !invData.isEmpty()) {
+                        player.getInventory().deserialize(invData);
+                        System.out.println("Restored player inventory (" +
+                            player.getInventory().getUsedSlotCount() + " used slots)");
+                    }
                     System.out.println("Loaded world '" + folderName + "' (seed=" + seed + ")");
                 } else {
                     // Fallback: treat as new
@@ -442,6 +461,28 @@ public class GameLoop {
         chestScreen = new ChestScreen();
         chestScreen.init(bitmapFont);
         chestManager = new ChestManager();
+
+        // Load chest tile entities from disk
+        if (!isNew) {
+            try {
+                chestManager.load(saveManager.getSaveDir());
+            } catch (IOException e) {
+                System.err.println("Failed to load chests: " + e.getMessage());
+            }
+        }
+
+        furnaceScreen = new FurnaceScreen();
+        furnaceScreen.init(bitmapFont);
+        furnaceManager = new FurnaceManager();
+
+        // Load furnace tile entities from disk
+        if (!isNew) {
+            try {
+                furnaceManager.load(saveManager.getSaveDir());
+            } catch (IOException e) {
+                System.err.println("Failed to load furnaces: " + e.getMessage());
+            }
+        }
 
         blockBreakProgress = new BlockBreakProgress();
         itemEntityManager = new ItemEntityManager();
@@ -490,6 +531,12 @@ public class GameLoop {
             try {
                 int saved = saveManager.saveAllChunks(world);
                 savePlayerMeta();
+                if (furnaceManager != null) {
+                    furnaceManager.save(saveManager.getSaveDir());
+                }
+                if (chestManager != null) {
+                    chestManager.save(saveManager.getSaveDir());
+                }
                 System.out.println("Saved " + saved + " chunks");
             } catch (Exception e) {
                 System.err.println("Failed to save: " + e.getMessage());
@@ -511,6 +558,7 @@ public class GameLoop {
         if (deathScreen != null) deathScreen.cleanup();
         if (inventoryScreen != null) inventoryScreen.cleanup();
         if (chestScreen != null) chestScreen.cleanup();
+        if (furnaceScreen != null) furnaceScreen.cleanup();
         if (entityRenderer != null) entityRenderer.cleanup();
         if (itemEntityRenderer != null) itemEntityRenderer.cleanup();
         if (hud != null) hud.cleanup();
@@ -530,6 +578,8 @@ public class GameLoop {
         inventoryScreen = null;
         chestScreen = null;
         chestManager = null;
+        furnaceScreen = null;
+        furnaceManager = null;
         blockBreakProgress = null;
         itemEntityManager = null;
         itemEntityRenderer = null;
@@ -728,7 +778,10 @@ public class GameLoop {
 
         // Handle ESC → close screens or pause
         if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
-            if (chestScreen != null && chestScreen.isOpen()) {
+            if (furnaceScreen != null && furnaceScreen.isOpen()) {
+                furnaceScreen.close(player.getInventory());
+                Input.lockCursor();
+            } else if (chestScreen != null && chestScreen.isOpen()) {
                 chestScreen.close(player.getInventory());
                 Input.lockCursor();
             } else if (inventoryScreen != null && inventoryScreen.isOpen()) {
@@ -755,7 +808,9 @@ public class GameLoop {
         }
 
         // Inform controller about external screen state
-        controller.setExternalScreenOpen(chestScreen != null && chestScreen.isOpen());
+        controller.setExternalScreenOpen(
+            (chestScreen != null && chestScreen.isOpen()) ||
+            (furnaceScreen != null && furnaceScreen.isOpen()));
 
         // Update timers
         player.updateDamageFlash(dt);
@@ -783,6 +838,15 @@ public class GameLoop {
         entityManager.update(dt, world, player, itemEntityManager);
         mobSpawner.update(dt, world, player, entityManager, worldTime);
 
+        // Tick furnaces
+        if (furnaceManager != null) {
+            furnaceTickTimer += dt;
+            while (furnaceTickTimer >= FURNACE_TICK_INTERVAL) {
+                furnaceTickTimer -= FURNACE_TICK_INTERVAL;
+                furnaceManager.tickAll();
+            }
+        }
+
         // Process TNT chain reactions
         for (TNTEntity chain : TNTEntity.drainPendingChainTNT()) {
             chain.setExplosionCallback(makeTNTCallback());
@@ -790,7 +854,9 @@ public class GameLoop {
         }
 
         // Raycast
-        boolean anyScreenOpen = controller.isInventoryOpen() || (chestScreen != null && chestScreen.isOpen());
+        boolean anyScreenOpen = controller.isInventoryOpen()
+            || (chestScreen != null && chestScreen.isOpen())
+            || (furnaceScreen != null && furnaceScreen.isOpen());
         if (!player.isDead() && !anyScreenOpen) {
             currentHit = Raycast.cast(
                 world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
@@ -809,6 +875,15 @@ public class GameLoop {
                 inventoryScreen.handleClick(player.getInventory(),
                     Input.getMouseX(), Input.getMouseY(), w, h,
                     Input.isKeyDown(GLFW_KEY_LEFT_SHIFT));
+            }
+        }
+
+        // Furnace screen clicks + mouse tracking
+        if (furnaceScreen != null && furnaceScreen.isVisible()) {
+            furnaceScreen.updateMouse(Input.getMouseX(), Input.getMouseY(), h);
+            if (Input.isLeftMouseClicked()) {
+                furnaceScreen.handleClick(player.getInventory(),
+                    Input.getMouseX(), Input.getMouseY(), w, h);
             }
         }
 
@@ -891,6 +966,10 @@ public class GameLoop {
 
         if (chestScreen != null && chestScreen.isVisible()) {
             chestScreen.render(w, h, player.getInventory());
+        }
+
+        if (furnaceScreen != null && furnaceScreen.isVisible()) {
+            furnaceScreen.render(w, h, player.getInventory());
         }
 
         if (player.isDead()) {
@@ -1028,11 +1107,24 @@ public class GameLoop {
                 if (hitBlockId == Blocks.CHEST.id()) {
                     Chest chest = chestManager.getChestAt(currentHit.x(), currentHit.y(), currentHit.z());
                     if (chest == null) {
-                        // Create chest tile entity if missing
                         chest = chestManager.createChest(currentHit.x(), currentHit.y(), currentHit.z());
                     }
                     chestScreen.open(chest);
                     Input.unlockCursor();
+                }
+                // Check if we right-clicked a furnace → open UI
+                else if (hitBlockId == Blocks.FURNACE.id()) {
+                    Furnace furnace = furnaceManager.getFurnaceAt(currentHit.x(), currentHit.y(), currentHit.z());
+                    if (furnace == null) {
+                        furnace = furnaceManager.createFurnace(currentHit.x(), currentHit.y(), currentHit.z());
+                    }
+                    furnaceScreen.open(furnace);
+                    Input.unlockCursor();
+                }
+                // Try to eat food item (cooked/raw porkchop)
+                else if (player.getSelectedBlock() == Blocks.COOKED_PORKCHOP.id()
+                         || player.getSelectedBlock() == Blocks.RAW_PORKCHOP.id()) {
+                    player.tryEatHeldItem();
                 } else {
                     // Normal block placement
                     int px = currentHit.x() + currentHit.nx();
@@ -1040,7 +1132,7 @@ public class GameLoop {
                     int pz = currentHit.z() + currentHit.nz();
                     int placedBlockId = player.getSelectedBlock();
 
-                    if (placedBlockId > 0 && Blocks.get(placedBlockId).solid()) {
+                    if (placedBlockId > 0 && (Blocks.get(placedBlockId).solid() || Blocks.isNonSolidPlaceable(placedBlockId))) {
                         boolean canPlace;
 
                         if (isCreative) {
@@ -1055,9 +1147,16 @@ public class GameLoop {
                             chunkManager.rebuildMeshAt(px, py, pz);
                             chunkManager.rebuildChunks(affected);
 
-                            // If we placed a chest, create its tile entity
+                            // If we placed a chest or furnace, create its tile entity
                             if (placedBlockId == Blocks.CHEST.id()) {
                                 chestManager.createChest(px, py, pz);
+                            } else if (placedBlockId == Blocks.FURNACE.id()) {
+                                furnaceManager.createFurnace(px, py, pz);
+                            }
+
+                            // If we placed a torch, propagate block light
+                            if (placedBlockId == Blocks.TORCH.id()) {
+                                propagateBlockLight(px, py, pz, Blocks.getLightEmission(placedBlockId));
                             }
 
                             if (agentUse && agentActionQueue != null) {
@@ -1110,6 +1209,19 @@ public class GameLoop {
             return;
         }
 
+        // Furnace: drop all contents
+        if (blockId == Blocks.FURNACE.id() && spawnDrops) {
+            Furnace furnace = furnaceManager.removeFurnace(bx, by, bz);
+            if (furnace != null) {
+                Inventory.ItemStack[] drops = furnace.dropAll();
+                for (Inventory.ItemStack stack : drops) {
+                    if (stack != null && !stack.isEmpty()) {
+                        itemEntityManager.spawnDrop(stack.getBlockId(), stack.getCount(), bx, by, bz);
+                    }
+                }
+            }
+        }
+
         // Chest: drop all contents
         if (blockId == Blocks.CHEST.id() && spawnDrops) {
             Chest chest = chestManager.removeChest(bx, by, bz);
@@ -1137,6 +1249,50 @@ public class GameLoop {
     }
 
     /**
+     * Simple block light propagation using BFS.
+     * Called when a light-emitting block (torch) is placed.
+     */
+    private void propagateBlockLight(int wx, int wy, int wz, int lightLevel) {
+        if (lightLevel <= 0) return;
+
+        java.util.Queue<int[]> queue = new java.util.ArrayDeque<>();
+        world.setBlockLight(wx, wy, wz, lightLevel);
+        queue.add(new int[]{wx, wy, wz, lightLevel});
+
+        int[][] dirs = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        Set<ChunkPos> affectedChunks = new java.util.HashSet<>();
+
+        while (!queue.isEmpty()) {
+            int[] entry = queue.poll();
+            int ex = entry[0], ey = entry[1], ez = entry[2], level = entry[3];
+
+            for (int[] d : dirs) {
+                int nx = ex + d[0], ny = ey + d[1], nz = ez + d[2];
+                if (ny < 0 || ny >= com.voxelgame.world.WorldConstants.WORLD_HEIGHT) continue;
+
+                Block nBlock = Blocks.get(world.getBlock(nx, ny, nz));
+                if (nBlock.solid() && !nBlock.transparent()) continue;
+
+                int newLevel = level - 1;
+                if (nBlock.id() == Blocks.WATER.id()) newLevel -= 2;
+                if (newLevel <= 0) continue;
+
+                int current = world.getBlockLight(nx, ny, nz);
+                if (newLevel > current) {
+                    world.setBlockLight(nx, ny, nz, newLevel);
+                    queue.add(new int[]{nx, ny, nz, newLevel});
+                    int cx = Math.floorDiv(nx, com.voxelgame.world.WorldConstants.CHUNK_SIZE);
+                    int cz = Math.floorDiv(nz, com.voxelgame.world.WorldConstants.CHUNK_SIZE);
+                    affectedChunks.add(new ChunkPos(cx, cz));
+                }
+            }
+        }
+
+        // Rebuild affected chunk meshes so the light shows
+        chunkManager.rebuildChunks(affectedChunks);
+    }
+
+    /**
      * Create TNT explosion callback for chunk rebuilding.
      */
     private TNTEntity.ExplosionCallback makeTNTCallback() {
@@ -1150,6 +1306,19 @@ public class GameLoop {
                     Chest chest = chestManager.removeChest(x, y, z);
                     if (chest != null) {
                         Inventory.ItemStack[] drops = chest.dropAll();
+                        for (Inventory.ItemStack stack : drops) {
+                            if (stack != null && !stack.isEmpty()) {
+                                itemEntityManager.spawnDrop(stack.getBlockId(), stack.getCount(), x, y, z);
+                            }
+                        }
+                    }
+                }
+
+                // If a furnace was destroyed, remove it and drop items
+                if (furnaceManager != null) {
+                    Furnace furnace = furnaceManager.removeFurnace(x, y, z);
+                    if (furnace != null) {
+                        Inventory.ItemStack[] drops = furnace.dropAll();
                         for (Inventory.ItemStack stack : drops) {
                             if (stack != null && !stack.isEmpty()) {
                                 itemEntityManager.spawnDrop(stack.getBlockId(), stack.getCount(), x, y, z);
@@ -1217,6 +1386,12 @@ public class GameLoop {
         try {
             int saved = saveManager.saveModifiedChunks(world);
             savePlayerMeta();
+            if (furnaceManager != null) {
+                furnaceManager.save(saveManager.getSaveDir());
+            }
+            if (chestManager != null) {
+                chestManager.save(saveManager.getSaveDir());
+            }
             if (saved > 0) {
                 System.out.println("Auto-saved " + saved + " chunks");
             }
@@ -1241,6 +1416,7 @@ public class GameLoop {
             meta.setDifficulty(player.getDifficulty());
             meta.setSpawnPoint(player.getSpawnX(), player.getSpawnY(), player.getSpawnZ());
             meta.setPlayerHealth(player.getHealth());
+            meta.setInventoryData(player.getInventory().serialize());
             meta.setLastPlayedAt(System.currentTimeMillis());
             saveManager.saveMeta(meta);
         } catch (IOException e) {
@@ -1260,6 +1436,12 @@ public class GameLoop {
             try {
                 int saved = saveManager.saveAllChunks(world);
                 savePlayerMeta();
+                if (furnaceManager != null) {
+                    furnaceManager.save(saveManager.getSaveDir());
+                }
+                if (chestManager != null) {
+                    chestManager.save(saveManager.getSaveDir());
+                }
                 System.out.println("Saved " + saved + " chunks on exit");
             } catch (Exception e) {
                 System.err.println("Failed to save on exit: " + e.getMessage());

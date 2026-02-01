@@ -82,10 +82,11 @@ public final class RecipeRegistry {
         recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, IRON_INGOT, IRON_INGOT, STICK }, Blocks.IRON_AXE.id(), 1));
         recipes.add(new Recipe(1, 2, new int[]{ IRON_INGOT, STICK }, Blocks.IRON_SHOVEL.id(), 1));
 
-        // Swords
-        recipes.add(new Recipe(1, 2, new int[]{ PLANKS, STICK }, Blocks.WOODEN_SWORD.id(), 1));
-        recipes.add(new Recipe(1, 2, new int[]{ COBBLE, STICK }, Blocks.STONE_SWORD.id(), 1));
-        recipes.add(new Recipe(1, 2, new int[]{ IRON_INGOT, STICK }, Blocks.IRON_SWORD.id(), 1));
+        // Swords: 2x2 shaped with material + stick pattern (different from shovel/pickaxe)
+        // Sword = material on top-left, stick on bottom-right diagonal
+        recipes.add(new Recipe(2, 2, new int[]{ PLANKS, 0, 0, STICK }, Blocks.WOODEN_SWORD.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ COBBLE, 0, 0, STICK }, Blocks.STONE_SWORD.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, 0, 0, STICK }, Blocks.IRON_SWORD.id(), 1));
 
         System.out.println("[RecipeRegistry] Registered " + recipes.size() + " recipes");
     }

@@ -182,6 +182,37 @@ public class Player {
     }
 
     /**
+     * Try to eat the currently held item. Returns true if food was consumed.
+     * Cooked porkchop restores 8 HP, raw porkchop restores 3 HP.
+     */
+    public boolean tryEatHeldItem() {
+        Inventory.ItemStack stack = inventory.getSlot(selectedSlot);
+        if (stack == null || stack.isEmpty()) return false;
+
+        int blockId = stack.getBlockId();
+        float healAmount = 0;
+
+        if (blockId == Blocks.COOKED_PORKCHOP.id()) {
+            healAmount = 8.0f;
+        } else if (blockId == Blocks.RAW_PORKCHOP.id()) {
+            healAmount = 3.0f;
+        }
+
+        if (healAmount <= 0) return false;
+        if (health >= MAX_HEALTH) return false; // already full health
+
+        heal(healAmount);
+        stack.remove(1);
+        if (stack.isEmpty()) {
+            inventory.setSlot(selectedSlot, null);
+        }
+
+        System.out.printf("[Player] Ate %s, healed %.1f HP — HP: %.1f/%.1f%n",
+            Blocks.get(blockId).name(), healAmount, health, MAX_HEALTH);
+        return true;
+    }
+
+    /**
      * Consume one item from the selected hotbar slot (for block placement in survival).
      * Returns true if an item was consumed, false if slot was empty.
      */

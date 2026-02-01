@@ -68,6 +68,8 @@ public class GenContext {
 
     /**
      * Compute terrain height at a world (x, z) coordinate.
+     * Uses continental noise (broad shape), detail noise (small features),
+     * and erosion noise (valleys and mountains).
      * Used by multiple passes (terrain, surface, trees, spawn).
      */
     public int getTerrainHeight(int worldX, int worldZ) {
@@ -79,10 +81,22 @@ public class GenContext {
         double dz = worldZ * config.detailFreq;
         double detail = detailNoise.eval2D(dx, dz);
 
-        // Continental gives broad shape, detail adds variation
-        double combined = continental * 0.7 + detail * 0.3;
+        // Erosion noise — low frequency, creates wide valleys and plateaus
+        double ex = worldX * config.erosionFreq;
+        double ez = worldZ * config.erosionFreq;
+        double erosion = erosionNoise.eval2D(ex, ez);
 
-        int height = config.baseHeight + (int)(combined * config.heightVariation);
+        // Erosion sculpts the terrain: positive = mountains amplified, negative = flat valleys
+        // Use erosion to modulate the height variation
+        double erosionFactor = (erosion + 1.0) * 0.5; // [0, 1]
+        // Square it for more dramatic contrast between peaks and valleys
+        erosionFactor = erosionFactor * erosionFactor;
+        double amplifiedVariation = config.heightVariation * (0.3 + erosionFactor * 1.4);
+
+        // Continental gives broad shape, detail adds ruggedness
+        double combined = continental * 0.65 + detail * 0.35;
+
+        int height = config.baseHeight + (int)(combined * amplifiedVariation);
 
         // Clamp to valid range
         return Math.max(1, Math.min(height, WorldConstants.WORLD_HEIGHT - 2));

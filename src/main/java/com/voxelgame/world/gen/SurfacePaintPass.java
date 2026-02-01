@@ -34,8 +34,8 @@ public class SurfacePaintPass implements GenPipeline.GenerationPass {
                     // Just add a single gravel layer on the very top
                     chunk.setBlock(lx, height, lz, Blocks.GRAVEL.id());
 
-                } else if (height <= WorldConstants.SEA_LEVEL + 1 && height >= WorldConstants.SEA_LEVEL - 2) {
-                    // Beach zone: sand on top, sand below
+                } else if (height <= WorldConstants.SEA_LEVEL + 2 && height >= WorldConstants.SEA_LEVEL - 2) {
+                    // Beach zone: wider beach with sand on top, sand below
                     for (int d = 0; d < config.beachDepth && height - d > 0; d++) {
                         chunk.setBlock(lx, height - d, lz, Blocks.SAND.id());
                     }

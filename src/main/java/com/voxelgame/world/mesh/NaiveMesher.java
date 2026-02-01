@@ -198,6 +198,21 @@ public class NaiveMesher implements Mesher {
                     float wy = y;
                     float wz = cz + z;
 
+                    // Special rendering for torches: small centered cube
+                    if (blockId == Blocks.TORCH.id()) {
+                        int baseVert = transVertexCount;
+                        transVertexCount = meshTorch(transVerts, transIndices, transVertexCount,
+                                                      wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    // Special rendering for flowers: cross-shaped billboard
+                    if (Blocks.isFlower(blockId)) {
+                        transVertexCount = meshCross(transVerts, transIndices, transVertexCount,
+                                                      wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
                     for (int face = 0; face < 6; face++) {
                         int nx = x + FACE_NORMALS[face][0];
                         int ny = y + FACE_NORMALS[face][1];
@@ -400,5 +415,123 @@ public class NaiveMesher implements Mesher {
         verts.add(u);
         verts.add(v);
         verts.add(light);
+    }
+
+    /**
+     * Mesh a torch as a small centered cube (4/16 wide, 10/16 tall)
+     * with bright light value for the glow effect.
+     */
+    private int meshTorch(List<Float> verts, List<Integer> indices, int vertexCount,
+                           float wx, float wy, float wz, Block block, TextureAtlas atlas) {
+        float[] uv = atlas.getUV(block.getTextureIndex(0));
+        float light = 1.0f; // fully bright — torch glow
+
+        // Inset: centered 4/16 wide, 10/16 tall
+        float pad = 6.0f / 16.0f;  // 6/16 padding on each side
+        float x0 = wx + pad, x1 = wx + 1.0f - pad;
+        float z0 = wz + pad, z1 = wz + 1.0f - pad;
+        float y0 = wy, y1 = wy + 10.0f / 16.0f;
+
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+
+        // 6 faces of the small cube
+        int base = vertexCount;
+
+        // Top (+Y)
+        addVertex(verts, x0, y1, z0, u0, v0, light);
+        addVertex(verts, x0, y1, z1, u0, v1, light);
+        addVertex(verts, x1, y1, z1, u1, v1, light);
+        addVertex(verts, x1, y1, z0, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // Bottom (-Y)
+        addVertex(verts, x0, y0, z1, u0, v0, light);
+        addVertex(verts, x0, y0, z0, u0, v1, light);
+        addVertex(verts, x1, y0, z0, u1, v1, light);
+        addVertex(verts, x1, y0, z1, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // North (-Z)
+        addVertex(verts, x1, y1, z0, u0, v0, light);
+        addVertex(verts, x1, y0, z0, u0, v1, light);
+        addVertex(verts, x0, y0, z0, u1, v1, light);
+        addVertex(verts, x0, y1, z0, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // South (+Z)
+        addVertex(verts, x0, y1, z1, u0, v0, light);
+        addVertex(verts, x0, y0, z1, u0, v1, light);
+        addVertex(verts, x1, y0, z1, u1, v1, light);
+        addVertex(verts, x1, y1, z1, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // East (+X)
+        addVertex(verts, x1, y1, z1, u0, v0, light);
+        addVertex(verts, x1, y0, z1, u0, v1, light);
+        addVertex(verts, x1, y0, z0, u1, v1, light);
+        addVertex(verts, x1, y1, z0, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // West (-X)
+        addVertex(verts, x0, y1, z0, u0, v0, light);
+        addVertex(verts, x0, y0, z0, u0, v1, light);
+        addVertex(verts, x0, y0, z1, u1, v1, light);
+        addVertex(verts, x0, y1, z1, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        return base;
+    }
+
+    /**
+     * Mesh a flower/cross-shaped block as two intersecting quads (X-pattern).
+     * Classic Minecraft billboard rendering for plants.
+     */
+    private int meshCross(List<Float> verts, List<Integer> indices, int vertexCount,
+                           float wx, float wy, float wz, Block block, TextureAtlas atlas) {
+        float[] uv = atlas.getUV(block.getTextureIndex(0));
+        float light = 0.85f; // slightly dimmer than full bright
+
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+        int base = vertexCount;
+
+        // Diagonal 1: corner (0,0)→(1,1) — front and back
+        addVertex(verts, wx, wy + 1, wz, u0, v0, light);
+        addVertex(verts, wx, wy, wz, u0, v1, light);
+        addVertex(verts, wx + 1, wy, wz + 1, u1, v1, light);
+        addVertex(verts, wx + 1, wy + 1, wz + 1, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // Back face of diagonal 1
+        addVertex(verts, wx + 1, wy + 1, wz + 1, u0, v0, light);
+        addVertex(verts, wx + 1, wy, wz + 1, u0, v1, light);
+        addVertex(verts, wx, wy, wz, u1, v1, light);
+        addVertex(verts, wx, wy + 1, wz, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // Diagonal 2: corner (1,0)→(0,1) — front and back
+        addVertex(verts, wx + 1, wy + 1, wz, u0, v0, light);
+        addVertex(verts, wx + 1, wy, wz, u0, v1, light);
+        addVertex(verts, wx, wy, wz + 1, u1, v1, light);
+        addVertex(verts, wx, wy + 1, wz + 1, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        // Back face of diagonal 2
+        addVertex(verts, wx, wy + 1, wz + 1, u0, v0, light);
+        addVertex(verts, wx, wy, wz + 1, u0, v1, light);
+        addVertex(verts, wx + 1, wy, wz, u1, v1, light);
+        addVertex(verts, wx + 1, wy + 1, wz, u1, v0, light);
+        addQuadIndices(indices, base); base += 4;
+
+        return base;
+    }
+
+    /** Add standard quad indices (two triangles) for 4 vertices starting at base. */
+    private void addQuadIndices(List<Integer> indices, int base) {
+        indices.add(base);
+        indices.add(base + 1);
+        indices.add(base + 2);
+        indices.add(base);
+        indices.add(base + 2);
+        indices.add(base + 3);
     }
 }

@@ -61,6 +61,22 @@ public class InventoryScreen {
         {0.85f, 0.20f, 0.15f, 1.0f},     // 28 TNT
         {0.55f, 0.35f, 0.15f, 1.0f},     // 29 BOAT
         {0.50f, 0.50f, 0.55f, 1.0f},     // 30 MINECART
+        {0.45f, 0.45f, 0.48f, 1.0f},     // 31 FURNACE
+        {0.75f, 0.55f, 0.25f, 1.0f},     // 32 TORCH
+        {0.15f, 0.15f, 0.15f, 1.0f},     // 33 COAL
+        {0.80f, 0.78f, 0.75f, 1.0f},     // 34 IRON_INGOT
+        {0.85f, 0.92f, 0.95f, 0.7f},     // 35 GLASS
+        {0.78f, 0.51f, 0.31f, 1.0f},     // 36 COOKED_PORKCHOP
+        {0.86f, 0.12f, 0.12f, 1.0f},     // 37 RED_FLOWER
+        {1.00f, 0.90f, 0.20f, 1.0f},     // 38 YELLOW_FLOWER
+        {0.39f, 0.86f, 1.00f, 1.0f},     // 39 DIAMOND
+        {0.60f, 0.60f, 0.65f, 1.0f},     // 40 IRON_PICKAXE
+        {0.60f, 0.60f, 0.65f, 1.0f},     // 41 IRON_AXE
+        {0.60f, 0.60f, 0.65f, 1.0f},     // 42 IRON_SHOVEL
+        {0.60f, 0.60f, 0.65f, 1.0f},     // 43 IRON_SWORD
+        {0.58f, 0.42f, 0.20f, 1.0f},     // 44 WOODEN_SWORD
+        {0.50f, 0.50f, 0.52f, 1.0f},     // 45 STONE_SWORD
+        {0.20f, 0.20f, 0.20f, 1.0f},     // 46 CHARCOAL
     };
 
     private boolean visible = false;
