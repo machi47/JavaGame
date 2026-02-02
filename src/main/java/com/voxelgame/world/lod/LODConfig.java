@@ -19,11 +19,18 @@ public class LODConfig {
     /** Distance where LOD 3 starts. Computed from threshold. */
     private volatile int lod3Start = 64;
 
-    /** Maximum render distance (LOD 3 extends to this). Default: 128 */
-    private volatile int maxRenderDistance = 128;
+    /** Maximum render distance (LOD 3 extends to this). Default: 32 */
+    private volatile int maxRenderDistance = 32;
 
     /** Unload distance — chunks beyond this are removed. */
-    private volatile int unloadDistance = 130;
+    private volatile int unloadDistance = 34;
+
+    /**
+     * Hard cap on total loaded chunks to prevent memory overload.
+     * Based on (maxRenderDist * 2 + 1)^2 — the theoretical max for a square area.
+     * Recalculated when maxRenderDistance changes.
+     */
+    private volatile int maxLoadedChunks = 4225; // (32*2+1)^2
 
     // ---- Performance tuning ----
 
@@ -48,10 +55,10 @@ public class LODConfig {
     // ---- Quality presets ----
 
     public enum Quality {
-        LOW(4, 48),
-        MEDIUM(8, 96),
-        HIGH(8, 128),
-        ULTRA(12, 192);
+        LOW(4, 16),
+        MEDIUM(8, 32),
+        HIGH(10, 48),
+        ULTRA(12, 64);
 
         public final int threshold;
         public final int maxDistance;
@@ -73,6 +80,7 @@ public class LODConfig {
     public int getLod3Start() { return lod3Start; }
     public int getMaxRenderDistance() { return maxRenderDistance; }
     public int getUnloadDistance() { return unloadDistance; }
+    public int getMaxLoadedChunks() { return maxLoadedChunks; }
 
     // ---- Setters ----
 
@@ -82,7 +90,7 @@ public class LODConfig {
     }
 
     public void setMaxRenderDistance(int distance) {
-        this.maxRenderDistance = Math.max(16, Math.min(256, distance));
+        this.maxRenderDistance = Math.max(8, Math.min(64, distance));
         recalcBoundaries();
     }
 
@@ -104,6 +112,8 @@ public class LODConfig {
         this.lod2Start = lodThreshold + (int)(range * 0.3);
         this.lod3Start = lodThreshold + (int)(range * 0.6);
         this.unloadDistance = maxRenderDistance + 2;
+        int side = maxRenderDistance * 2 + 1;
+        this.maxLoadedChunks = side * side;
     }
 
     /**

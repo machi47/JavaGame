@@ -149,11 +149,17 @@ public class ChunkManager {
         lastPlayerCX = pcx;
         lastPlayerCZ = pcz;
 
-        // 6. Request chunks within full LOD render distance (sorted by distance, closest first)
-        requestChunks(pcx, pcz);
-
-        // 7. Unload far chunks
+        // 6. Unload far chunks FIRST to free space before loading new ones
         unloadDistantChunks(pcx, pcz);
+
+        // 7. Enforce hard chunk cap — aggressively unload farthest if over limit
+        enforceChunkCap(pcx, pcz);
+
+        // 8. Request chunks within full LOD render distance (sorted by distance, closest first)
+        // Skip if already at chunk cap
+        if (world.getChunkMap().size() < lodConfig.getMaxLoadedChunks()) {
+            requestChunks(pcx, pcz);
+        }
     }
 
     /**
@@ -484,6 +490,50 @@ public class ChunkManager {
                 }
             }
             // Cancel any pending generation
+            Future<Chunk> pending = pendingGen.remove(pos);
+            if (pending != null) pending.cancel(false);
+
+            world.removeChunk(pos);
+        }
+    }
+
+    /**
+     * Enforce hard chunk cap by unloading the farthest chunks when over limit.
+     * This prevents unbounded memory growth regardless of render distance settings.
+     */
+    private void enforceChunkCap(int pcx, int pcz) {
+        int maxChunks = lodConfig.getMaxLoadedChunks();
+        int currentCount = world.getChunkMap().size();
+
+        if (currentCount <= maxChunks) return;
+
+        // Collect all chunks with their distances
+        List<Map.Entry<ChunkPos, Integer>> byDistance = new ArrayList<>();
+        for (ChunkPos pos : world.getChunkMap().keySet()) {
+            int dx = pos.x() - pcx;
+            int dz = pos.z() - pcz;
+            byDistance.add(Map.entry(pos, dx * dx + dz * dz));
+        }
+
+        // Sort by distance descending (farthest first)
+        byDistance.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
+
+        // Remove chunks until we're under the cap
+        int toRemove = currentCount - maxChunks;
+        for (int i = 0; i < toRemove && i < byDistance.size(); i++) {
+            ChunkPos pos = byDistance.get(i).getKey();
+
+            // Save modified chunks before unloading
+            if (saveManager != null) {
+                Chunk chunk = world.getChunk(pos.x(), pos.z());
+                if (chunk != null && chunk.isModified()) {
+                    try {
+                        saveManager.saveChunk(chunk);
+                    } catch (java.io.IOException e) {
+                        System.err.println("Failed to save chunk on cap enforce: " + pos);
+                    }
+                }
+            }
             Future<Chunk> pending = pendingGen.remove(pos);
             if (pending != null) pending.cancel(false);
 
