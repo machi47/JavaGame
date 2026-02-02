@@ -82,6 +82,9 @@ public class Controller {
     private InventoryScreen inventoryScreen = null;
     private CreativeInventoryScreen creativeInventoryScreen = null;
 
+    // ---- Item dropping ----
+    private ItemEntityManager itemEntityManager = null;
+
     public Controller(Player player) {
         this.player = player;
     }
@@ -101,6 +104,11 @@ public class Controller {
         this.creativeInventoryScreen = screen;
     }
 
+    /** Set the item entity manager reference (for Q key item dropping). */
+    public void setItemEntityManager(ItemEntityManager manager) {
+        this.itemEntityManager = manager;
+    }
+
     public void update(float dt) {
         // When dead, only allow ESC for cursor unlock — no movement, camera, or actions
         if (player.isDead()) {
@@ -117,6 +125,7 @@ public class Controller {
         handleMovement(dt);
         handleModeToggles();
         handleHotbar();
+        handleItemDrop();
         handleInventoryToggle();
     }
 
@@ -163,6 +172,33 @@ public class Controller {
 
     /** Whether the player is currently breaking a block. */
     public boolean isBreaking() { return isBreaking; }
+
+    // ---- Item dropping (Q key) ----
+
+    private void handleItemDrop() {
+        if (!Input.isKeyPressed(GLFW_KEY_Q)) return;
+        if (itemEntityManager == null) return;
+        if (isInventoryOpen() || anyExternalScreenOpen) return;
+
+        Inventory inventory = player.getInventory();
+        int slot = player.getSelectedSlot();
+        Inventory.ItemStack stack = inventory.getSlot(slot);
+        if (stack == null || stack.isEmpty()) return;
+
+        boolean ctrlHeld = Input.isKeyDown(GLFW_KEY_LEFT_CONTROL) || Input.isKeyDown(GLFW_KEY_RIGHT_CONTROL);
+        int dropCount = ctrlHeld ? stack.getCount() : 1;
+
+        int blockId = stack.getBlockId();
+        int durability = stack.hasDurability() ? stack.getDurability() : -1;
+        int maxDurability = stack.hasDurability() ? stack.getMaxDurability() : -1;
+
+        itemEntityManager.dropFromPlayer(player, blockId, dropCount, durability, maxDurability);
+
+        stack.remove(dropCount);
+        if (stack.isEmpty()) {
+            inventory.setSlot(slot, null);
+        }
+    }
 
     // ---- Inventory toggle ----
 
