@@ -14,37 +14,43 @@ public class LODConfig {
     private volatile int lodThreshold = 8;
 
     /** Distance where LOD 2 starts. Computed from threshold. */
-    private volatile int lod2Start = 32;
+    private volatile int lod2Start = 12;
 
     /** Distance where LOD 3 starts. Computed from threshold. */
-    private volatile int lod3Start = 64;
+    private volatile int lod3Start = 16;
 
-    /** Maximum render distance (LOD 3 extends to this). Default: 32 */
-    private volatile int maxRenderDistance = 32;
+    /** Maximum render distance (LOD 3 extends to this). Default: 20 */
+    private volatile int maxRenderDistance = 20;
 
     /** Unload distance — chunks beyond this are removed. */
-    private volatile int unloadDistance = 34;
+    private volatile int unloadDistance = 22;
 
     /**
-     * Hard cap on total loaded chunks to prevent memory overload.
-     * Based on (maxRenderDist * 2 + 1)^2 — the theoretical max for a square area.
+     * Hard cap on total loaded chunks to prevent memory/perf overload.
+     * Uses circular area (π*r²) + margin, NOT square area.
      * Recalculated when maxRenderDistance changes.
      */
-    private volatile int maxLoadedChunks = 4225; // (32*2+1)^2
+    private volatile int maxLoadedChunks = 1300;
+
+    /**
+     * Absolute ceiling on loaded chunks regardless of render distance.
+     * Prevents catastrophic performance collapse even with max settings.
+     */
+    public static final int ABSOLUTE_MAX_CHUNKS = 2500;
 
     // ---- Performance tuning ----
 
     /** Max chunk generations per frame for LOD 0-1 (close chunks). */
-    public static final int MAX_CLOSE_GEN_PER_FRAME = 8;
+    public static final int MAX_CLOSE_GEN_PER_FRAME = 4;
 
     /** Max chunk generations per frame for LOD 2-3 (distant chunks). */
-    public static final int MAX_FAR_GEN_PER_FRAME = 16;
+    public static final int MAX_FAR_GEN_PER_FRAME = 6;
 
     /** Max mesh uploads per frame (GPU operations). */
-    public static final int MAX_MESH_UPLOADS_PER_FRAME = 8;
+    public static final int MAX_MESH_UPLOADS_PER_FRAME = 6;
 
     /** Max LOD mesh uploads per frame (separate budget for distant). */
-    public static final int MAX_LOD_UPLOADS_PER_FRAME = 12;
+    public static final int MAX_LOD_UPLOADS_PER_FRAME = 8;
 
     /** Generation thread pool size. */
     public static final int GEN_THREAD_COUNT = 4;
@@ -55,10 +61,10 @@ public class LODConfig {
     // ---- Quality presets ----
 
     public enum Quality {
-        LOW(4, 16),
-        MEDIUM(8, 32),
-        HIGH(10, 48),
-        ULTRA(12, 64);
+        LOW(4, 12),
+        MEDIUM(8, 20),
+        HIGH(8, 32),
+        ULTRA(10, 40);
 
         public final int threshold;
         public final int maxDistance;
@@ -90,7 +96,7 @@ public class LODConfig {
     }
 
     public void setMaxRenderDistance(int distance) {
-        this.maxRenderDistance = Math.max(8, Math.min(64, distance));
+        this.maxRenderDistance = Math.max(8, Math.min(40, distance));
         recalcBoundaries();
     }
 
@@ -112,8 +118,10 @@ public class LODConfig {
         this.lod2Start = lodThreshold + (int)(range * 0.3);
         this.lod3Start = lodThreshold + (int)(range * 0.6);
         this.unloadDistance = maxRenderDistance + 2;
-        int side = maxRenderDistance * 2 + 1;
-        this.maxLoadedChunks = side * side;
+        // Use circular area (π*r²) with 10% margin, NOT square area.
+        // For r=20: π*400 ≈ 1,257. For r=40: π*1600 ≈ 5,027.
+        int circularArea = (int)(Math.PI * maxRenderDistance * maxRenderDistance * 1.1);
+        this.maxLoadedChunks = Math.min(circularArea, ABSOLUTE_MAX_CHUNKS);
     }
 
     /**

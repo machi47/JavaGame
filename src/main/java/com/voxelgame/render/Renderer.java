@@ -3,6 +3,7 @@ package com.voxelgame.render;
 import com.voxelgame.world.Chunk;
 import com.voxelgame.world.ChunkPos;
 import com.voxelgame.world.World;
+import com.voxelgame.world.WorldConstants;
 import com.voxelgame.world.WorldTime;
 import com.voxelgame.world.lod.LODConfig;
 import com.voxelgame.world.lod.LODLevel;
@@ -72,6 +73,11 @@ public class Renderer {
     }
 
     public void render(Camera camera, int windowWidth, int windowHeight) {
+        // Sync camera far plane with LOD config (prevents frustum from extending way beyond render distance)
+        if (lodConfig != null) {
+            camera.setFarPlane(lodConfig.getFarPlane());
+        }
+
         Matrix4f projection = camera.getProjectionMatrix(windowWidth, windowHeight);
         Matrix4f view = camera.getViewMatrix();
 
@@ -88,6 +94,13 @@ public class Renderer {
             fogStart = 80.0f;
             fogEnd = 128.0f;
         }
+
+        // Pre-compute distance culling threshold (in chunk coordinates)
+        // Chunks beyond maxRenderDistance + 1 are fully fogged and don't need rendering
+        float maxChunkDist = lodConfig != null ? lodConfig.getMaxRenderDistance() + 1.0f : 20.0f;
+        float maxChunkDistSq = maxChunkDist * maxChunkDist;
+        float camCX = camera.getPosition().x / WorldConstants.CHUNK_SIZE;
+        float camCZ = camera.getPosition().z / WorldConstants.CHUNK_SIZE;
 
         // Bind shader and set shared uniforms
         blockShader.bind();
@@ -112,6 +125,14 @@ public class Renderer {
             ChunkPos pos = entry.getKey();
             Chunk chunk = entry.getValue();
 
+            // Distance cull — skip chunks beyond fog end (fully fogged, no point rendering)
+            float cdx = pos.x() + 0.5f - camCX;
+            float cdz = pos.z() + 0.5f - camCZ;
+            if (cdx * cdx + cdz * cdz > maxChunkDistSq) {
+                culledChunks++;
+                continue;
+            }
+
             if (!frustum.isChunkVisible(pos.x(), pos.z())) {
                 culledChunks++;
                 continue;
@@ -134,12 +155,14 @@ public class Renderer {
         blockShader.setFloat("uAlpha", WATER_ALPHA);
 
         for (var entry : world.getChunkMap().entrySet()) {
-            ChunkPos pos = entry.getKey();
             Chunk chunk = entry.getValue();
 
+            // Skip non-LOD0 chunks early — they never have transparent meshes
+            if (chunk.getCurrentLOD() != com.voxelgame.world.lod.LODLevel.LOD_0) continue;
+
+            ChunkPos pos = entry.getKey();
             if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
 
-            // Only render transparent for LOD 0 chunks
             ChunkMesh transMesh = chunk.getRenderTransparentMesh();
             if (transMesh != null && !transMesh.isEmpty()) {
                 transMesh.draw();

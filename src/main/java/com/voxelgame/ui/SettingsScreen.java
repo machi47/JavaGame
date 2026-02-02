@@ -32,7 +32,7 @@ public class SettingsScreen extends Screen {
     private float fov = 70.0f;             // degrees (50-120)
     private float mouseSensitivity = 0.1f; // (0.01-0.5)
     private int lodThreshold = 8;          // where LOD starts (4-16)
-    private int maxLodDistance = 128;       // max render distance (16-256)
+    private int maxLodDistance = 20;        // max render distance (16-40)
 
     // Slider config
     private static final int MIN_RENDER_DIST = 4;
@@ -43,8 +43,8 @@ public class SettingsScreen extends Screen {
     private static final float MAX_SENS = 0.50f;
     private static final int MIN_LOD_THRESHOLD = 4;
     private static final int MAX_LOD_THRESHOLD = 16;
-    private static final int MIN_LOD_DIST = 16;
-    private static final int MAX_LOD_DIST = 256;
+    private static final int MIN_LOD_DIST = 12;
+    private static final int MAX_LOD_DIST = 40;
 
     private static final float SLIDER_WIDTH = 360.0f;
     private static final float SLIDER_HEIGHT = 8.0f;

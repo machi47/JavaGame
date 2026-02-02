@@ -124,6 +124,16 @@ public class ChunkManager {
         int pcz = (int) Math.floor(player.getPosition().z / WorldConstants.CHUNK_SIZE);
         frameCount++;
 
+        // Periodic debug logging for chunk performance monitoring
+        if (frameCount % 300 == 0) { // ~every 5-10 seconds
+            System.out.println("[ChunkPerf] loaded=" + world.getChunkMap().size()
+                + " pending=" + pendingGen.size()
+                + " cap=" + lodConfig.getMaxLoadedChunks()
+                + " maxDist=" + lodConfig.getMaxRenderDistance()
+                + " LOD[0/1/2/3]=" + lod0Count + "/" + lod1Count + "/" + lod2Count + "/" + lod3Count
+                + " uploads=" + (uploadQueue.size() + lodUploadQueue.size()));
+        }
+
         // 1. Process completed chunk generations
         processCompletedGenerations();
 
@@ -139,25 +149,26 @@ public class ChunkManager {
             }
         }
 
-        // 4. Update LOD levels for loaded chunks (every 10 frames to reduce overhead)
-        if (frameCount % 10 == 0) {
+        // 4. Update LOD levels for loaded chunks (every 15 frames for responsive transitions)
+        if (frameCount % 15 == 0) {
             updateLODLevels(pcx, pcz);
         }
 
-        // 5. Only update load/unload when player moves to new chunk
-        if (pcx == lastPlayerCX && pcz == lastPlayerCZ) return;
-        lastPlayerCX = pcx;
-        lastPlayerCZ = pcz;
+        boolean playerMovedChunk = (pcx != lastPlayerCX || pcz != lastPlayerCZ);
+        if (playerMovedChunk) {
+            lastPlayerCX = pcx;
+            lastPlayerCZ = pcz;
 
-        // 6. Unload far chunks FIRST to free space before loading new ones
-        unloadDistantChunks(pcx, pcz);
+            // 5. Unload far chunks FIRST to free space before loading new ones
+            unloadDistantChunks(pcx, pcz);
 
-        // 7. Enforce hard chunk cap — aggressively unload farthest if over limit
-        enforceChunkCap(pcx, pcz);
+            // 6. Enforce hard chunk cap — aggressively unload farthest if over limit
+            enforceChunkCap(pcx, pcz);
+        }
 
-        // 8. Request chunks within full LOD render distance (sorted by distance, closest first)
-        // Skip if already at chunk cap
-        if (world.getChunkMap().size() < lodConfig.getMaxLoadedChunks()) {
+        // 7. Request chunks every frame (budget-limited) until world is filled.
+        // This ensures continuous loading rather than only on chunk crossings.
+        if (world.getChunkMap().size() + pendingGen.size() < lodConfig.getMaxLoadedChunks()) {
             requestChunks(pcx, pcz);
         }
     }
@@ -168,11 +179,15 @@ public class ChunkManager {
      *
      * Uses a hysteresis buffer (2 chunks) to prevent LOD flickering
      * when the player is near a boundary.
+     *
+     * CRITICAL: LOD level is only changed when we can also submit the
+     * corresponding mesh job. This prevents chunks from being stuck at
+     * a LOD level with no mesh for that level.
      */
     private void updateLODLevels(int pcx, int pcz) {
         int l0 = 0, l1 = 0, l2 = 0, l3 = 0;
         int meshJobsSubmitted = 0;
-        int maxMeshJobsPerUpdate = 8; // Don't overwhelm the mesh pool
+        int maxMeshJobsPerUpdate = 16; // Increased from 8 to handle more transitions per update
 
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
@@ -185,47 +200,79 @@ public class ChunkManager {
             LODLevel newLOD = lodConfig.getLevelForDistance(distSq);
             LODLevel oldLOD = chunk.getCurrentLOD();
 
-            // Hysteresis: only upgrade (increase detail) at boundary - 2 chunks,
-            // only downgrade (decrease detail) at boundary + 2 chunks.
-            // This prevents flickering when walking along a LOD boundary.
+            // Hysteresis: only upgrade (increase detail) when firmly past the boundary.
+            // Uses actual chunk distance + 2 buffer, not just distSq + 4.
             if (newLOD.level() < oldLOD.level()) {
-                // Upgrading — require 2 chunks past the boundary
-                LODLevel checkLOD = lodConfig.getLevelForDistance(distSq + 4);
+                // Check what LOD we'd be at 2 chunks farther out
+                int dist = (int) Math.sqrt(distSq);
+                int checkDistSq = (dist + 2) * (dist + 2);
+                LODLevel checkLOD = lodConfig.getLevelForDistance(checkDistSq);
                 if (checkLOD.level() >= oldLOD.level()) {
                     newLOD = oldLOD; // Not far enough past boundary yet
                 }
             }
 
-            // Count stats
-            switch (newLOD) {
+            if (newLOD != oldLOD) {
+                // CRITICAL: Only change LOD if we can submit the mesh job.
+                // Otherwise the chunk gets stuck at the new LOD with no mesh.
+                if (meshJobsSubmitted >= maxMeshJobsPerUpdate) {
+                    // Can't submit mesh job this frame — keep old LOD
+                    newLOD = oldLOD;
+                } else {
+                    // If upgrading to LOD 0 and no full mesh, rebuild it
+                    if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
+                        chunk.setCurrentLOD(newLOD);
+                        if (chunk.isLightDirty()) {
+                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialBlockLight(chunk, world);
+                        }
+                        submitMeshJob(chunk, pos, false);
+                        meshJobsSubmitted++;
+                    }
+                    // If downgrading, check if LOD mesh already cached
+                    else if (newLOD.level() > 0 && chunk.getLodMesh(newLOD.level()) == null) {
+                        chunk.setCurrentLOD(newLOD);
+                        submitLODMeshJob(chunk, pos, newLOD);
+                        meshJobsSubmitted++;
+                    } else {
+                        // Mesh already cached for this LOD level
+                        chunk.setCurrentLOD(newLOD);
+                        chunk.setLodMeshReady(true);
+                    }
+                }
+            } else {
+                // LOD didn't change — but check if mesh is missing (retry failed builds)
+                if (meshJobsSubmitted < maxMeshJobsPerUpdate) {
+                    if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
+                        if (chunk.isLightDirty()) {
+                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialBlockLight(chunk, world);
+                        }
+                        submitMeshJob(chunk, pos, false);
+                        meshJobsSubmitted++;
+                    } else if (newLOD.level() > 0) {
+                        // Check if this chunk has ANY renderable mesh
+                        boolean hasAnyMesh = false;
+                        for (int i = newLOD.level(); i <= 3; i++) {
+                            if (chunk.getLodMesh(i) != null && !chunk.getLodMesh(i).isEmpty()) {
+                                hasAnyMesh = true;
+                                break;
+                            }
+                        }
+                        if (!hasAnyMesh && chunk.getMesh() == null) {
+                            submitLODMeshJob(chunk, pos, newLOD);
+                            meshJobsSubmitted++;
+                        }
+                    }
+                }
+            }
+
+            // Count stats based on ACTUAL current LOD (after potential revert)
+            switch (chunk.getCurrentLOD()) {
                 case LOD_0 -> l0++;
                 case LOD_1 -> l1++;
                 case LOD_2 -> l2++;
                 case LOD_3 -> l3++;
-            }
-
-            if (newLOD != oldLOD) {
-                chunk.setCurrentLOD(newLOD);
-
-                if (meshJobsSubmitted >= maxMeshJobsPerUpdate) continue;
-
-                // If upgrading to LOD 0 and no full mesh, rebuild it
-                if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
-                    // Also compute lighting if missing
-                    if (chunk.isLightDirty()) {
-                        Lighting.computeInitialSkyLight(chunk, world);
-                        Lighting.computeInitialBlockLight(chunk, world);
-                    }
-                    submitMeshJob(chunk, pos, false);
-                    meshJobsSubmitted++;
-                }
-                // If downgrading, check if LOD mesh already cached
-                else if (newLOD.level() > 0 && chunk.getLodMesh(newLOD.level()) == null) {
-                    submitLODMeshJob(chunk, pos, newLOD);
-                    meshJobsSubmitted++;
-                } else {
-                    chunk.setLodMeshReady(true);
-                }
             }
         }
 
@@ -241,7 +288,10 @@ public class ChunkManager {
      * Close chunks (LOD 0-1) are prioritized, then distant (LOD 2-3).
      *
      * Uses a spiral scan pattern limited by per-frame budgets to avoid
-     * scanning all 65k+ positions in a 128-chunk radius each frame.
+     * scanning all positions in a large radius each frame.
+     *
+     * Enforces the chunk cap: stops requesting new chunks when the total
+     * loaded count + pending generation count approaches the cap.
      */
     private void requestChunks(int pcx, int pcz) {
         int maxDist = lodConfig.getMaxRenderDistance();
@@ -250,13 +300,19 @@ public class ChunkManager {
         int closeEnqueued = 0;
         int farEnqueued = 0;
 
+        // Hard stop: don't queue more if we're near the chunk cap
+        int headroom = lodConfig.getMaxLoadedChunks() - world.getChunkMap().size() - pendingGen.size();
+        if (headroom <= 0) return;
+
         // Spiral scan: dx,dz from center outward
         // This naturally prioritizes close chunks without needing a full sort
-        for (int ring = 0; ring <= maxDist; ring++) {
+        boolean budgetFull = false;
+        for (int ring = 0; ring <= maxDist && !budgetFull; ring++) {
             if (closeEnqueued >= closeMax && farEnqueued >= farMax) break;
+            if (closeEnqueued + farEnqueued >= headroom) break; // respect chunk cap
 
             // Scan the perimeter of the current ring
-            for (int dx = -ring; dx <= ring; dx++) {
+            for (int dx = -ring; dx <= ring && !budgetFull; dx++) {
                 for (int dz = -ring; dz <= ring; dz++) {
                     // Only process the ring perimeter (not interior — already done)
                     if (Math.abs(dx) != ring && Math.abs(dz) != ring) continue;
@@ -274,6 +330,7 @@ public class ChunkManager {
 
                     if (isClose && closeEnqueued >= closeMax) continue;
                     if (!isClose && farEnqueued >= farMax) continue;
+                    if (closeEnqueued + farEnqueued >= headroom) { budgetFull = true; break; }
 
                     // Try loading from disk first
                     if (saveManager != null) {
@@ -322,7 +379,26 @@ public class ChunkManager {
     private void processCompletedGenerations() {
         Iterator<Map.Entry<ChunkPos, Future<Chunk>>> it = pendingGen.entrySet().iterator();
         int processed = 0;
-        int maxProcess = LODConfig.MAX_CLOSE_GEN_PER_FRAME + LODConfig.MAX_FAR_GEN_PER_FRAME;
+        // Limit how many completed chunks we integrate per frame to avoid spikes.
+        // Also respect the chunk cap — don't add more if we're at the limit.
+        int maxProcess = Math.min(
+            LODConfig.MAX_CLOSE_GEN_PER_FRAME + LODConfig.MAX_FAR_GEN_PER_FRAME,
+            lodConfig.getMaxLoadedChunks() - world.getChunkMap().size()
+        );
+        if (maxProcess <= 0) {
+            // At chunk cap — cancel only NOT-YET-DONE futures to free thread pool.
+            // Preserve completed futures so their results aren't lost.
+            while (it.hasNext()) {
+                Map.Entry<ChunkPos, Future<Chunk>> entry = it.next();
+                Future<Chunk> f = entry.getValue();
+                if (!f.isDone()) {
+                    f.cancel(false);
+                    it.remove();
+                }
+                // Completed futures are kept for processing next frame when there's room
+            }
+            return;
+        }
 
         while (it.hasNext() && processed < maxProcess) {
             Map.Entry<ChunkPos, Future<Chunk>> entry = it.next();

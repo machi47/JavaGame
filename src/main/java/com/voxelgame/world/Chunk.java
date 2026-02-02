@@ -205,20 +205,32 @@ public class Chunk {
 
     /**
      * Get the best available mesh for rendering based on current LOD.
-     * Falls back to lower-detail LOD meshes if requested LOD isn't ready.
+     * Uses a tiered fallback strategy:
+     *   1. Current LOD mesh or higher LOD number (lower detail)
+     *   2. Lower LOD number (higher detail, but still simplified)
+     *   3. Full mesh only for LOD 0-1 (close enough to look acceptable)
+     *   4. null for LOD 2+ (too far — don't show full-detail mesh at distance)
      */
     public ChunkMesh getRenderMesh() {
         int level = currentLOD.level();
         // LOD 0 uses the main opaque mesh
         if (level == 0) return mesh;
-        // Check LOD meshes, falling back to higher LOD number (lower detail)
+        // Check current LOD and higher LOD numbers (lower detail)
         for (int i = level; i <= 3; i++) {
             if (lodMeshes[i] != null && !lodMeshes[i].isEmpty()) {
                 return lodMeshes[i];
             }
         }
-        // Fallback to full mesh if no LOD mesh available yet
-        return mesh;
+        // Check lower LOD numbers (higher detail, but still simplified)
+        for (int i = level - 1; i >= 1; i--) {
+            if (lodMeshes[i] != null && !lodMeshes[i].isEmpty()) {
+                return lodMeshes[i];
+            }
+        }
+        // For LOD 1, full mesh is acceptable (close distance)
+        if (level <= 1) return mesh;
+        // For LOD 2+, don't render full-detail mesh at distance
+        return null;
     }
 
     /**

@@ -64,4 +64,6 @@ tasks.named<JavaExec>("run") {
     if (OperatingSystem.current().isMacOsX) {
         jvmArgs("-XstartOnFirstThread")
     }
+    // Enough heap for chunk loading + BFS light propagation
+    jvmArgs("-Xmx1g", "-Xms256m")
 }
