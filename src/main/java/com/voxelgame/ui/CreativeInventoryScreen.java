@@ -864,7 +864,8 @@ public class CreativeInventoryScreen {
             glBindVertexArray(quadVao);
             atlas.bind(0);
             texShader.setInt("uTexture", 0);
-            texShader.setVec4("uUVRect", uv[0], uv[1], uv[2], uv[3]);
+            // Flip V to fix GL y-axis (flame on top for torches, etc.)
+            texShader.setVec4("uUVRect", uv[0], uv[3], uv[2], uv[1]);
             setProjectionTex(new Matrix4f().ortho(
                 -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
                 -(sy + off) / PREVIEW_SIZE, (sh - sy - off) / PREVIEW_SIZE,

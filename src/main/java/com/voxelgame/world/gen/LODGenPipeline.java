@@ -1,43 +1,59 @@
 package com.voxelgame.world.gen;
 
+import com.voxelgame.world.Blocks;
 import com.voxelgame.world.Chunk;
+import com.voxelgame.world.WorldConstants;
 
 /**
  * Simplified generation pipeline for LOD 2+ chunks.
- * Only generates base terrain + surface paint (no caves, ores, trees, etc.).
- * Much faster than the full pipeline since distant chunks only show the surface.
+ * Supports all world generation presets (flat, floating islands, standard).
+ * Only generates the minimum needed for distant chunks (no caves/ores/trees).
  */
 public class LODGenPipeline {
 
     private final GenContext context;
-    private final GenPipeline.GenerationPass terrainPass;
-    private final GenPipeline.GenerationPass surfacePass;
+    private final GenConfig config;
+    private GenPipeline.GenerationPass terrainPass;
+    private GenPipeline.GenerationPass surfacePass;
 
-    /**
-     * Create a simplified LOD generation pipeline.
-     */
+    /** Create with default config (backward compatible). */
     public LODGenPipeline(long seed) {
-        GenConfig config = GenConfig.defaultConfig();
+        this(seed, GenConfig.defaultConfig());
+    }
+
+    /** Create with custom config for preset support. */
+    public LODGenPipeline(long seed, GenConfig config) {
+        this.config = config;
         this.context = new GenContext(seed, config);
 
-        // Only need terrain + surface (skip caves, ores, trees, flowers, fluids)
-        Infdev611TerrainPass terrain = new Infdev611TerrainPass(seed);
-        context.setInfdev611Terrain(terrain);
-
-        this.terrainPass = terrain;
-        this.surfacePass = new Infdev611SurfacePass(
-            terrain.getBeachNoise(),
-            terrain.getSurfaceNoise(),
-            seed);
+        if (config.flatWorld) {
+            // Flat world: just the flat pass
+            this.terrainPass = new FlatWorldPass();
+            this.surfacePass = null;
+        } else if (config.floatingIslands) {
+            // Floating islands: island pass + simple surface
+            this.terrainPass = new FloatingIslandsPass(seed, config);
+            this.surfacePass = new IslandSurfacePass(seed);
+        } else {
+            // Standard terrain: Infdev611 + surface paint
+            Infdev611TerrainPass terrain = new Infdev611TerrainPass(seed, config);
+            context.setInfdev611Terrain(terrain);
+            this.terrainPass = terrain;
+            this.surfacePass = new Infdev611SurfacePass(
+                terrain.getBeachNoise(),
+                terrain.getSurfaceNoise(),
+                seed);
+        }
     }
 
     /**
      * Generate a simplified chunk (terrain + surface only).
-     * ~3-5x faster than full pipeline.
      */
     public void generateSimplified(Chunk chunk) {
         terrainPass.apply(chunk, context);
-        surfacePass.apply(chunk, context);
+        if (surfacePass != null) {
+            surfacePass.apply(chunk, context);
+        }
     }
 
     public GenContext getContext() {

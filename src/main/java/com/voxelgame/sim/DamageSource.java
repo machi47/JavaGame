@@ -23,5 +23,8 @@ public enum DamageSource {
     DROWNING,
 
     /** Damage from TNT explosion. */
-    EXPLOSION
+    EXPLOSION,
+
+    /** Damage from contact with lava. */
+    LAVA
 }

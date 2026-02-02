@@ -296,7 +296,10 @@ public class Hud {
                         glBindVertexArray(quadVao);
                         atlas.bind(0);
                         texShader.setInt("uTexture", 0);
-                        texShader.setVec4("uUVRect", uv[0], uv[1], uv[2], uv[3]);
+                        // Flip V coordinates: GL texture has y=0 at bottom, but pixel data
+                        // has y=0 at top (image convention). Swap v0↔v1 so textures render
+                        // right-side-up (flame on top for torch, petals on top for flowers, etc.)
+                        texShader.setVec4("uUVRect", uv[0], uv[3], uv[2], uv[1]);
                         setProjectionTex(new Matrix4f().ortho(
                             -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
                             -(y0 + off) / PREVIEW_SIZE, (sh - y0 - off) / PREVIEW_SIZE,

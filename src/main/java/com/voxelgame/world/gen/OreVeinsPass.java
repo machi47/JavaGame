@@ -18,17 +18,26 @@ public class OreVeinsPass implements GenPipeline.GenerationPass {
     @Override
     public void apply(Chunk chunk, GenContext context) {
         GenConfig config = context.getConfig();
+        if (!config.oresEnabled) return;  // skip if ores disabled
+
         RNG rng = context.chunkRNG(chunk.getPos().x(), chunk.getPos().z());
 
-        // Generate each ore type
+        // Generate each ore type (applying abundance multiplier)
         generateOre(chunk, rng, Blocks.COAL_ORE.id(),
-                    config.coalMinY, config.coalMaxY, config.coalVeinSize, config.coalAttemptsPerChunk);
+                    config.coalMinY, config.coalMaxY, config.coalVeinSize,
+                    config.effectiveOreAttempts(config.coalAttemptsPerChunk));
         generateOre(chunk, rng, Blocks.IRON_ORE.id(),
-                    config.ironMinY, config.ironMaxY, config.ironVeinSize, config.ironAttemptsPerChunk);
+                    config.ironMinY, config.ironMaxY, config.ironVeinSize,
+                    config.effectiveOreAttempts(config.ironAttemptsPerChunk));
         generateOre(chunk, rng, Blocks.GOLD_ORE.id(),
-                    config.goldMinY, config.goldMaxY, config.goldVeinSize, config.goldAttemptsPerChunk);
+                    config.goldMinY, config.goldMaxY, config.goldVeinSize,
+                    config.effectiveOreAttempts(config.goldAttemptsPerChunk));
         generateOre(chunk, rng, Blocks.DIAMOND_ORE.id(),
-                    config.diamondMinY, config.diamondMaxY, config.diamondVeinSize, config.diamondAttemptsPerChunk);
+                    config.diamondMinY, config.diamondMaxY, config.diamondVeinSize,
+                    config.effectiveOreAttempts(config.diamondAttemptsPerChunk));
+        generateOre(chunk, rng, Blocks.REDSTONE_ORE.id(),
+                    config.redstoneMinY, config.redstoneMaxY, config.redstoneVeinSize,
+                    config.effectiveOreAttempts(config.redstoneAttemptsPerChunk));
     }
 
     private void generateOre(Chunk chunk, RNG rng, int oreId,

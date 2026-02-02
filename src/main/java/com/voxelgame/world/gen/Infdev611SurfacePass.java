@@ -43,7 +43,9 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
         int chunkWorldX = chunk.getPos().worldX();
         int chunkWorldZ = chunk.getPos().worldZ();
 
-        // Create deterministic RNG for this chunk (bedrock randomness, etc.)
+        // Use configurable sea level from GenConfig
+        int seaLevel = context.getConfig().seaLevel;
+
         Random rand = new Random((long) chunkX * 341873128712L + (long) chunkZ * 132897987541L + seed);
         Random bedrockRand = new Random((long) chunkX * 341873128712L + (long) chunkZ * 132897987541L + seed);
 
@@ -52,7 +54,6 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
                 int worldX = chunkWorldX + localX;
                 int worldZ = chunkWorldZ + localZ;
 
-                // Beach noise sampling (matches Minecraft's Infdev 611)
                 boolean genSandBeach = beachNoise.sample(
                     worldX * BEACH_SCALE,
                     worldZ * BEACH_SCALE,
@@ -65,7 +66,6 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
                     worldX * BEACH_SCALE
                 ) + rand.nextDouble() * 0.2 > 3.0;
 
-                // Surface depth from surface noise
                 int surfaceDepth = (int)(surfaceNoise.sample2D(
                     worldX * BEACH_SCALE * 2.0,
                     worldZ * BEACH_SCALE * 2.0
@@ -73,13 +73,10 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
 
                 int runDepth = -1;
 
-                // Default surface blocks
                 int topBlock = Blocks.GRASS.id();
                 int fillerBlock = Blocks.DIRT.id();
 
-                // Generate from top to bottom
                 for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
-                    // Place bedrock (jagged bottom layers)
                     if (y <= 0 + bedrockRand.nextInt(5)) {
                         chunk.setBlock(localX, y, localZ, Blocks.BEDROCK.id());
                         continue;
@@ -90,19 +87,17 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
                     if (currentBlock == Blocks.AIR.id()) {
                         runDepth = -1;
 
-                        // Fill water below sea level
-                        if (y <= WorldConstants.SEA_LEVEL) {
+                        // Fill water below configurable sea level
+                        if (y <= seaLevel) {
                             chunk.setBlock(localX, y, localZ, Blocks.WATER.id());
                         }
                     } else if (currentBlock == Blocks.STONE.id()) {
                         if (runDepth == -1) {
                             if (surfaceDepth <= 0) {
-                                // Thin surface: expose stone
                                 topBlock = Blocks.AIR.id();
                                 fillerBlock = Blocks.STONE.id();
-                            } else if (y >= WorldConstants.SEA_LEVEL - 4 &&
-                                       y <= WorldConstants.SEA_LEVEL + 1) {
-                                // Beach zone: apply beach rules
+                            } else if (y >= seaLevel - 4 &&
+                                       y <= seaLevel + 1) {
                                 topBlock = Blocks.GRASS.id();
                                 fillerBlock = Blocks.DIRT.id();
 
@@ -119,12 +114,11 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
 
                             runDepth = surfaceDepth;
 
-                            if (y < WorldConstants.SEA_LEVEL && topBlock == Blocks.AIR.id()) {
+                            if (y < seaLevel && topBlock == Blocks.AIR.id()) {
                                 topBlock = Blocks.WATER.id();
                             }
 
-                            // Place the top block
-                            if (y >= WorldConstants.SEA_LEVEL - 1) {
+                            if (y >= seaLevel - 1) {
                                 chunk.setBlock(localX, y, localZ, topBlock);
                             } else {
                                 chunk.setBlock(localX, y, localZ, fillerBlock);
@@ -136,7 +130,6 @@ public class Infdev611SurfacePass implements GenPipeline.GenerationPass {
                     }
                 }
 
-                // Reset topBlock/fillerBlock for next column
                 topBlock = Blocks.GRASS.id();
                 fillerBlock = Blocks.DIRT.id();
             }

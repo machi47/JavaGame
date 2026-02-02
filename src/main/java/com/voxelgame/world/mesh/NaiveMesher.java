@@ -199,17 +199,42 @@ public class NaiveMesher implements Mesher {
                     float wz = cz + z;
 
                     // Special rendering for torches: small centered cube
-                    if (blockId == Blocks.TORCH.id()) {
-                        int baseVert = transVertexCount;
-                        transVertexCount = meshTorch(transVerts, transIndices, transVertexCount,
-                                                      wx, wy, wz, block, atlas);
+                    // Rendered in OPAQUE pass with alpha-discard (shader discards alpha < 0.1)
+                    // This prevents the transparent pass's uAlpha/depth-write-off from making torches see-through
+                    if (blockId == Blocks.TORCH.id() || blockId == Blocks.REDSTONE_TORCH.id()) {
+                        opaqueVertexCount = meshTorch(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                       wx, wy, wz, block, atlas);
                         continue;
                     }
 
                     // Special rendering for flowers: cross-shaped billboard
+                    // Rendered in OPAQUE pass with alpha-discard
                     if (Blocks.isFlower(blockId)) {
-                        transVertexCount = meshCross(transVerts, transIndices, transVertexCount,
-                                                      wx, wy, wz, block, atlas);
+                        opaqueVertexCount = meshCross(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                       wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    // Special rendering for rails: flat quad on ground
+                    // Rendered in OPAQUE pass with alpha-discard
+                    if (Blocks.isRail(blockId)) {
+                        opaqueVertexCount = meshFlatQuad(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                          wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    // Special rendering for redstone wire: flat quad on ground
+                    // Rendered in OPAQUE pass with alpha-discard
+                    if (blockId == Blocks.REDSTONE_WIRE.id()) {
+                        opaqueVertexCount = meshFlatQuad(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                          wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    // Special rendering for redstone repeater: flat slab on ground
+                    if (blockId == Blocks.REDSTONE_REPEATER.id()) {
+                        transVertexCount = meshFlatSlab(transVerts, transIndices, transVertexCount,
+                                                         wx, wy, wz, block, atlas);
                         continue;
                     }
 
@@ -530,6 +555,90 @@ public class NaiveMesher implements Mesher {
         addVertex(verts, wx, wy, wz + 1, u0, v1, skyL, blkL);
         addVertex(verts, wx + 1, wy, wz, u1, v1, skyL, blkL);
         addVertex(verts, wx + 1, wy + 1, wz, u1, v0, skyL, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        return base;
+    }
+
+    /**
+     * Mesh a flat quad on the ground surface (for rails, redstone wire).
+     * Renders as a single horizontal quad slightly above the block floor.
+     */
+    private int meshFlatQuad(List<Float> verts, List<Integer> indices, int vertexCount,
+                              float wx, float wy, float wz, Block block, TextureAtlas atlas) {
+        float[] uv = atlas.getUV(block.getTextureIndex(0));
+        float skyL = 0.85f;
+        float blkL = 0.0f;
+
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+        float yOff = wy + 0.02f;  // slightly above ground to avoid z-fighting
+        int base = vertexCount;
+
+        // Top face
+        addVertex(verts, wx, yOff, wz, u0, v0, skyL, blkL);
+        addVertex(verts, wx, yOff, wz + 1, u0, v1, skyL, blkL);
+        addVertex(verts, wx + 1, yOff, wz + 1, u1, v1, skyL, blkL);
+        addVertex(verts, wx + 1, yOff, wz, u1, v0, skyL, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        // Bottom face (visible from below)
+        addVertex(verts, wx + 1, yOff, wz, u0, v0, skyL, blkL);
+        addVertex(verts, wx + 1, yOff, wz + 1, u0, v1, skyL, blkL);
+        addVertex(verts, wx, yOff, wz + 1, u1, v1, skyL, blkL);
+        addVertex(verts, wx, yOff, wz, u1, v0, skyL, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        return base;
+    }
+
+    /**
+     * Mesh a flat slab on the ground surface (for redstone repeater).
+     * Renders as a thin box (2/16 tall) on the ground.
+     */
+    private int meshFlatSlab(List<Float> verts, List<Integer> indices, int vertexCount,
+                              float wx, float wy, float wz, Block block, TextureAtlas atlas) {
+        float[] uv = atlas.getUV(block.getTextureIndex(0));
+        float skyL = 0.8f;
+        float blkL = 0.0f;
+
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+        float y0 = wy;
+        float y1 = wy + 2.0f / 16.0f;
+        int base = vertexCount;
+
+        // Top (+Y)
+        addVertex(verts, wx, y1, wz, u0, v0, skyL, blkL);
+        addVertex(verts, wx, y1, wz + 1, u0, v1, skyL, blkL);
+        addVertex(verts, wx + 1, y1, wz + 1, u1, v1, skyL, blkL);
+        addVertex(verts, wx + 1, y1, wz, u1, v0, skyL, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        // North (-Z)
+        addVertex(verts, wx + 1, y1, wz, u0, v0, skyL * 0.7f, blkL);
+        addVertex(verts, wx + 1, y0, wz, u0, v1, skyL * 0.7f, blkL);
+        addVertex(verts, wx, y0, wz, u1, v1, skyL * 0.7f, blkL);
+        addVertex(verts, wx, y1, wz, u1, v0, skyL * 0.7f, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        // South (+Z)
+        addVertex(verts, wx, y1, wz + 1, u0, v0, skyL * 0.7f, blkL);
+        addVertex(verts, wx, y0, wz + 1, u0, v1, skyL * 0.7f, blkL);
+        addVertex(verts, wx + 1, y0, wz + 1, u1, v1, skyL * 0.7f, blkL);
+        addVertex(verts, wx + 1, y1, wz + 1, u1, v0, skyL * 0.7f, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        // East (+X)
+        addVertex(verts, wx + 1, y1, wz + 1, u0, v0, skyL * 0.8f, blkL);
+        addVertex(verts, wx + 1, y0, wz + 1, u0, v1, skyL * 0.8f, blkL);
+        addVertex(verts, wx + 1, y0, wz, u1, v1, skyL * 0.8f, blkL);
+        addVertex(verts, wx + 1, y1, wz, u1, v0, skyL * 0.8f, blkL);
+        addQuadIndices(indices, base); base += 4;
+
+        // West (-X)
+        addVertex(verts, wx, y1, wz, u0, v0, skyL * 0.6f, blkL);
+        addVertex(verts, wx, y0, wz, u0, v1, skyL * 0.6f, blkL);
+        addVertex(verts, wx, y0, wz + 1, u1, v1, skyL * 0.6f, blkL);
+        addVertex(verts, wx, y1, wz + 1, u1, v0, skyL * 0.6f, blkL);
         addQuadIndices(indices, base); base += 4;
 
         return base;

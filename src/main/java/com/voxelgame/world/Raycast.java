@@ -50,12 +50,12 @@ public class Raycast {
 
         float dist = 0;
         while (dist < maxDist) {
-            // Check current block
+            // Check current block (solid blocks + non-solid placeables like torches, flowers, rails)
             if (y >= 0 && y < WorldConstants.WORLD_HEIGHT) {
                 int blockId = world.getBlock(x, y, z);
                 if (blockId != 0) {
                     Block block = Blocks.get(blockId);
-                    if (block.solid()) {
+                    if (block.solid() || Blocks.isNonSolidPlaceable(blockId)) {
                         return new HitResult(x, y, z, faceNx, faceNy, faceNz);
                     }
                 }

@@ -29,7 +29,8 @@ public final class SmeltingRecipe {
     private static void registerRecipes() {
         // Ore smelting
         RECIPES.add(new Recipe(Blocks.IRON_ORE.id(), Blocks.IRON_INGOT.id(), 1));
-        RECIPES.add(new Recipe(Blocks.GOLD_ORE.id(), Blocks.IRON_INGOT.id(), 1)); // placeholder — gold ingot later
+        RECIPES.add(new Recipe(Blocks.GOLD_ORE.id(), Blocks.GOLD_INGOT.id(), 1));
+        RECIPES.add(new Recipe(Blocks.REDSTONE_ORE.id(), Blocks.REDSTONE.id(), 1));
 
         // Material processing
         RECIPES.add(new Recipe(Blocks.SAND.id(), Blocks.GLASS.id(), 1));

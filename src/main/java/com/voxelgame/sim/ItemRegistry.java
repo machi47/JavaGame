@@ -73,14 +73,18 @@ public final class ItemRegistry {
         register(Blocks.IRON_ORE.id(),      "Iron Ore",        Category.ORES);
         register(Blocks.GOLD_ORE.id(),      "Gold Ore",        Category.ORES);
         register(Blocks.DIAMOND_ORE.id(),   "Diamond Ore",     Category.ORES);
+        register(Blocks.REDSTONE_ORE.id(),  "Redstone Ore",    Category.ORES);
 
         // ---- Functional ----
-        register(Blocks.TORCH.id(),           "Torch",           Category.FUNCTIONAL);
-        register(Blocks.CRAFTING_TABLE.id(),  "Crafting Table",  Category.FUNCTIONAL);
-        register(Blocks.FURNACE.id(),         "Furnace",         Category.FUNCTIONAL);
-        register(Blocks.CHEST.id(),           "Chest",           Category.FUNCTIONAL);
-        register(Blocks.TNT.id(),             "TNT",             Category.FUNCTIONAL);
-        register(Blocks.RAIL.id(),            "Rail",            Category.FUNCTIONAL);
+        register(Blocks.TORCH.id(),              "Torch",              Category.FUNCTIONAL);
+        register(Blocks.CRAFTING_TABLE.id(),     "Crafting Table",     Category.FUNCTIONAL);
+        register(Blocks.FURNACE.id(),            "Furnace",            Category.FUNCTIONAL);
+        register(Blocks.CHEST.id(),              "Chest",              Category.FUNCTIONAL);
+        register(Blocks.TNT.id(),                "TNT",                Category.FUNCTIONAL);
+        register(Blocks.RAIL.id(),               "Rail",               Category.FUNCTIONAL);
+        register(Blocks.POWERED_RAIL.id(),       "Powered Rail",       Category.FUNCTIONAL);
+        register(Blocks.REDSTONE_TORCH.id(),     "Redstone Torch",     Category.FUNCTIONAL);
+        register(Blocks.REDSTONE_REPEATER.id(),  "Redstone Repeater",  Category.FUNCTIONAL);
 
         // ---- Tools ----
         register(Blocks.WOODEN_PICKAXE.id(),  "Wooden Pickaxe",  Category.TOOLS);
@@ -101,7 +105,9 @@ public final class ItemRegistry {
         register(Blocks.COAL.id(),          "Coal",            Category.MATERIALS);
         register(Blocks.CHARCOAL.id(),      "Charcoal",        Category.MATERIALS);
         register(Blocks.IRON_INGOT.id(),    "Iron Ingot",      Category.MATERIALS);
+        register(Blocks.GOLD_INGOT.id(),    "Gold Ingot",      Category.MATERIALS);
         register(Blocks.DIAMOND.id(),       "Diamond",         Category.MATERIALS);
+        register(Blocks.REDSTONE.id(),      "Redstone",        Category.MATERIALS);
 
         // ---- Food ----
         register(Blocks.RAW_PORKCHOP.id(),    "Raw Porkchop",    Category.FOOD);

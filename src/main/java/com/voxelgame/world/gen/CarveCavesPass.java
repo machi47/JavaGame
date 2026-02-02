@@ -19,6 +19,8 @@ public class CarveCavesPass implements GenPipeline.GenerationPass {
     @Override
     public void apply(Chunk chunk, GenContext context) {
         GenConfig config = context.getConfig();
+        if (!config.cavesEnabled) return;  // skip if caves disabled
+
         int chunkWorldX = chunk.getPos().worldX();
         int chunkWorldZ = chunk.getPos().worldZ();
 

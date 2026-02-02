@@ -91,6 +91,17 @@ public class WorldMeta {
     public float getPlayerHealth() { return playerHealth; }
     public void setPlayerHealth(float health) { this.playerHealth = health; }
 
+    // --- World generation preset ---
+
+    private String worldGenPreset = "DEFAULT";
+    private String genConfigData = "";  // serialized advanced settings
+
+    public String getWorldGenPreset() { return worldGenPreset; }
+    public void setWorldGenPreset(String preset) { this.worldGenPreset = preset != null ? preset : "DEFAULT"; }
+
+    public String getGenConfigData() { return genConfigData; }
+    public void setGenConfigData(String data) { this.genConfigData = data != null ? data : ""; }
+
     // --- Player inventory ---
 
     private String inventoryData = "";
@@ -127,6 +138,10 @@ public class WorldMeta {
         props.setProperty("playerHealth", Float.toString(playerHealth));
         if (inventoryData != null && !inventoryData.isEmpty()) {
             props.setProperty("inventoryData", inventoryData);
+        }
+        props.setProperty("worldGenPreset", worldGenPreset);
+        if (genConfigData != null && !genConfigData.isEmpty()) {
+            props.setProperty("genConfigData", genConfigData);
         }
 
         try (OutputStream os = new FileOutputStream(file.toFile())) {
@@ -169,6 +184,8 @@ public class WorldMeta {
         meta.spawnZ = Float.parseFloat(props.getProperty("spawnZ", props.getProperty("playerZ", "0")));
         meta.playerHealth = Float.parseFloat(props.getProperty("playerHealth", "20.0"));
         meta.inventoryData = props.getProperty("inventoryData", "");
+        meta.worldGenPreset = props.getProperty("worldGenPreset", "DEFAULT");
+        meta.genConfigData = props.getProperty("genConfigData", "");
 
         return meta;
     }

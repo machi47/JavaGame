@@ -15,7 +15,7 @@ public class TextureAtlas {
 
     private static final int TILE_SIZE = 16;
     private static final int TILES_PER_ROW = 8;
-    private static final int TILE_COUNT = 39; // 0-38 (includes InfDev 611 blocks + charcoal)
+    private static final int TILE_COUNT = 48; // 0-47 (includes fluids: 46=lava, 47=obsidian)
     private static final int ATLAS_WIDTH = TILES_PER_ROW * TILE_SIZE;  // 128
     private static final int ATLAS_HEIGHT = ((TILE_COUNT + TILES_PER_ROW - 1) / TILES_PER_ROW) * TILE_SIZE;
 
@@ -99,6 +99,15 @@ public class TextureAtlas {
             case 36 -> generateYellowFlower(pixels, baseX, baseY);
             case 37 -> generateDiamond(pixels, baseX, baseY);
             case 38 -> generateCharcoal(pixels, baseX, baseY);
+            case 39 -> generateGoldIngot(pixels, baseX, baseY);
+            case 40 -> generatePoweredRail(pixels, baseX, baseY);
+            case 41 -> generateRedstoneItem(pixels, baseX, baseY);
+            case 42 -> generateRedstoneWire(pixels, baseX, baseY);
+            case 43 -> generateRedstoneTorch(pixels, baseX, baseY);
+            case 44 -> generateRedstoneRepeater(pixels, baseX, baseY);
+            case 45 -> generateRedstoneOre(pixels, baseX, baseY);
+            case 46 -> generateLava(pixels, baseX, baseY);
+            case 47 -> generateObsidian(pixels, baseX, baseY);
         }
     }
 
@@ -609,6 +618,205 @@ public class TextureAtlas {
                     setPixel(buf, bx + x, by + y,
                         clamp(168 + noise), clamp(130 + noise), clamp(78 + noise), 255);
                 }
+            }
+    }
+
+    // Gold Ingot: warm yellow-gold ingot shape
+    private void generateGoldIngot(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 7) - 4;
+                boolean shape = (x >= 2 && x <= 13 && y >= 5 && y <= 12);
+                boolean top = (x >= 4 && x <= 11 && y >= 3 && y <= 5);
+                if (shape || top) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(255 + noise), clamp(200 + noise), clamp(50 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Powered Rail: golden rails with redstone-tinted ties
+    private void generatePoweredRail(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 7) - 4;
+                boolean rail = (x == 3 || x == 12);
+                boolean tie = (y % 4 < 2) && (x >= 2 && x <= 13);
+                boolean center = (x >= 7 && x <= 8) && (y % 4 < 2);
+                if (rail) {
+                    // Golden rails
+                    setPixel(buf, bx + x, by + y,
+                        clamp(255 + noise), clamp(200 + noise), clamp(50 + noise), 255);
+                } else if (center) {
+                    // Redstone center strip
+                    setPixel(buf, bx + x, by + y,
+                        clamp(180 + noise), clamp(20 + noise), clamp(20 + noise), 255);
+                } else if (tie) {
+                    // Darker wooden ties
+                    setPixel(buf, bx + x, by + y,
+                        clamp(100 + noise), clamp(70 + noise), clamp(40 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Redstone item: small red dust pile
+    private void generateRedstoneItem(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 15) - 8;
+                double cx = x - 7.5, cy = y - 7.5;
+                boolean shape = (cx * cx + cy * cy) < 25;
+                boolean bright = (cx * cx + cy * cy) < 9;
+                if (bright) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(220 + noise), clamp(30 + noise), clamp(20 + noise), 255);
+                } else if (shape) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(160 + noise), clamp(15 + noise), clamp(15 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Redstone Wire: cross-shaped red dust pattern on ground
+    private void generateRedstoneWire(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 7) - 4;
+                boolean hLine = (y >= 6 && y <= 9) && (x >= 1 && x <= 14);
+                boolean vLine = (x >= 6 && x <= 9) && (y >= 1 && y <= 14);
+                boolean center = (x >= 5 && x <= 10 && y >= 5 && y <= 10);
+                if (center) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(200 + noise), clamp(20 + noise), clamp(15 + noise), 230);
+                } else if (hLine || vLine) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(160 + noise), clamp(10 + noise), clamp(10 + noise), 200);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Redstone Torch: like regular torch but red flame
+    private void generateRedstoneTorch(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 3) - 2;
+                boolean stick = (x >= 6 && x <= 9 && y >= 4 && y <= 15);
+                boolean flame = (x >= 5 && x <= 10 && y >= 0 && y <= 4);
+                boolean flameCenter = (x >= 7 && x <= 8 && y >= 1 && y <= 3);
+                if (flameCenter) {
+                    setPixel(buf, bx + x, by + y, 255, clamp(80 + noise * 10), 50, 240);
+                } else if (flame && ((x + y) % 2 == 0)) {
+                    setPixel(buf, bx + x, by + y, clamp(200 + noise * 10), 20, 20, 200);
+                } else if (stick) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(120 + noise), clamp(85 + noise), clamp(50 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Redstone Repeater: stone slab with two redstone torches and arrow
+    private void generateRedstoneRepeater(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 7) - 4;
+                boolean base = (x >= 1 && x <= 14 && y >= 1 && y <= 14);
+                boolean torch1 = (x >= 3 && x <= 5 && y >= 6 && y <= 9);
+                boolean torch2 = (x >= 10 && x <= 12 && y >= 6 && y <= 9);
+                boolean arrow = (x == 7 || x == 8) && (y >= 3 && y <= 12);
+                if (torch1 || torch2) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(200 + noise), clamp(20 + noise), clamp(15 + noise), 255);
+                } else if (arrow) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(160 + noise), clamp(10 + noise), clamp(10 + noise), 255);
+                } else if (base) {
+                    int v = 140 + noise;
+                    setPixel(buf, bx + x, by + y, clamp(v), clamp(v), clamp(v), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    // Redstone Ore: stone base with red ore spots
+    private void generateRedstoneOre(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int stoneNoise = (hash(x, y) & 31) - 16;
+                boolean isOreSpot = (hash(x * 17 + 3, y * 13 + 7) & 7) < 2;
+                if (isOreSpot) {
+                    setPixel(buf, bx + x, by + y, 200, 30, 20, 255);
+                } else {
+                    int v = 127 + stoneNoise;
+                    setPixel(buf, bx + x, by + y, clamp(v), clamp(v), clamp(v), 255);
+                }
+            }
+    }
+
+    /**
+     * Lava texture — glowing orange-red with darker veins (Infdev 611 style).
+     */
+    private void generateLava(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise1 = (hash(x * 7 + 3, y * 11 + 5) & 63) - 32;
+                int noise2 = (hash(x * 13 + y * 7, y * 3 + x * 11) & 31) - 16;
+                boolean isDarkVein = (hash(x * 23 + 11, y * 19 + 7) & 15) < 3;
+                boolean isBrightSpot = (hash(x * 31 + 2, y * 29 + 13) & 15) < 2;
+
+                int r, g, b;
+                if (isDarkVein) {
+                    // Dark orange/brown veins
+                    r = clamp(160 + noise2);
+                    g = clamp(60 + noise2 / 2);
+                    b = clamp(10);
+                } else if (isBrightSpot) {
+                    // Bright yellow-white hot spots
+                    r = clamp(255);
+                    g = clamp(220 + noise2);
+                    b = clamp(80 + noise1 / 2);
+                } else {
+                    // Base orange-red
+                    r = clamp(220 + noise1 / 2);
+                    g = clamp(100 + noise1 / 3);
+                    b = clamp(20 + noise2 / 4);
+                }
+                setPixel(buf, bx + x, by + y, r, g, b, 255);
+            }
+    }
+
+    /**
+     * Obsidian texture — dark purple-black with subtle purple highlights.
+     */
+    private void generateObsidian(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x * 11 + 7, y * 13 + 3) & 31) - 16;
+                boolean hasHighlight = (hash(x * 37 + y * 23, y * 17 + x * 11) & 15) < 2;
+
+                int r, g, b;
+                if (hasHighlight) {
+                    // Subtle purple highlight
+                    r = clamp(40 + noise);
+                    g = clamp(15 + noise / 2);
+                    b = clamp(55 + noise);
+                } else {
+                    // Very dark base (almost black with purple tint)
+                    r = clamp(20 + noise / 2);
+                    g = clamp(12 + noise / 3);
+                    b = clamp(30 + noise / 2);
+                }
+                setPixel(buf, bx + x, by + y, r, g, b, 255);
             }
     }
 

@@ -119,7 +119,10 @@ public class Renderer {
         culledChunks = 0;
 
         // ---- Pass 1: Opaque geometry (all LOD levels) ----
+        // Includes alpha-discard geometry (torches, flowers, rails) which need both-side rendering.
+        // Disabling cull face here is safe since solid block faces are single-sided anyway.
         blockShader.setFloat("uAlpha", 1.0f);
+        glDisable(GL_CULL_FACE);
 
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
@@ -146,7 +149,10 @@ public class Renderer {
             }
         }
 
-        // ---- Pass 2: Transparent geometry (water) — LOD 0 only ----
+        // Re-enable cull face after opaque pass (was disabled for cross-billboard geometry)
+        glEnable(GL_CULL_FACE);
+
+        // ---- Pass 2: Transparent geometry (water only now) — LOD 0 only ----
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);       // don't write to depth buffer

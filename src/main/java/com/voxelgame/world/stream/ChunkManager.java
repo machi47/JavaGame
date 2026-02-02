@@ -4,6 +4,7 @@ import com.voxelgame.render.TextureAtlas;
 import com.voxelgame.save.SaveManager;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.*;
+import com.voxelgame.world.gen.GenConfig;
 import com.voxelgame.world.gen.GenPipeline;
 import com.voxelgame.world.gen.LODGenPipeline;
 import com.voxelgame.world.lod.LODConfig;
@@ -69,6 +70,9 @@ public class ChunkManager {
     /** Seed to use for world generation. */
     private long seed = ChunkGenerationWorker.DEFAULT_SEED;
 
+    /** World generation config (preset + advanced settings). */
+    private GenConfig genConfig = GenConfig.defaultConfig();
+
     /** Shared generation pipeline (thread-safe for read, individual instances for gen). */
     private GenPipeline sharedPipeline;
 
@@ -93,6 +97,16 @@ public class ChunkManager {
         this.seed = seed;
     }
 
+    /** Set the world generation config (call before init). */
+    public void setGenConfig(GenConfig config) {
+        this.genConfig = config != null ? config : GenConfig.defaultConfig();
+    }
+
+    /** Get the current generation config. */
+    public GenConfig getGenConfig() {
+        return genConfig;
+    }
+
     /** Get the LOD configuration for settings changes. */
     public LODConfig getLodConfig() {
         return lodConfig;
@@ -102,7 +116,7 @@ public class ChunkManager {
         this.atlas = atlas;
         this.mesher = new NaiveMesher(atlas);
         this.lodMesher = new LODMesher(atlas);
-        this.sharedPipeline = GenPipeline.createDefault(seed);
+        this.sharedPipeline = GenPipeline.createWithConfig(seed, genConfig);
 
         // Create thread pool for chunk generation
         genPool = Executors.newFixedThreadPool(LODConfig.GEN_THREAD_COUNT, r -> {
@@ -353,14 +367,15 @@ public class ChunkManager {
                     // Submit async generation task
                     // Use simplified pipeline for distant chunks (LOD 2+)
                     final LODLevel genLevel = level;
+                    final GenConfig cfg = genConfig;  // capture for lambda
                     Future<Chunk> future = genPool.submit(() -> {
                         Chunk chunk = new Chunk(pos);
                         if (genLevel.level() >= 2) {
                             // Simplified: terrain + surface only (no caves/ores/trees)
-                            LODGenPipeline lodPipeline = new LODGenPipeline(seed);
+                            LODGenPipeline lodPipeline = new LODGenPipeline(seed, cfg);
                             lodPipeline.generateSimplified(chunk);
                         } else {
-                            GenPipeline pipeline = GenPipeline.createDefault(seed);
+                            GenPipeline pipeline = GenPipeline.createWithConfig(seed, cfg);
                             pipeline.generate(chunk);
                         }
                         chunk.setCurrentLOD(genLevel);

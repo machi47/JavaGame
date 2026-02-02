@@ -42,6 +42,7 @@ public enum Difficulty {
             case FALL, VOID, GENERIC -> 1.0f; // Environmental damage never scales
             case DROWNING -> envDamageMultiplier;  // Drowning scales with env damage
             case EXPLOSION -> 1.0f; // Explosion damage doesn't scale
+            case LAVA -> envDamageMultiplier; // Lava scales with env damage
         };
     }
 

@@ -54,6 +54,13 @@ public abstract class Entity {
     // ---- Ground state ----
     protected boolean onGround = false;
 
+    // ---- Walk animation state ----
+    protected float limbSwing = 0;
+    protected float limbSwingAmount = 0;
+
+    // ---- Burning state (for cooked drops) ----
+    protected boolean burning = false;
+
     // ---- Random for AI ----
     protected final Random random = new Random();
 
@@ -120,6 +127,10 @@ public abstract class Entity {
      * Entities use a simplified collision compared to the player.
      */
     protected void moveWithCollision(float dt, World world) {
+        // ---- Save previous position for animation ----
+        float prevX = x;
+        float prevZ = z;
+
         // ---- Gravity ----
         vy -= GRAVITY * dt;
         if (vy < -MAX_FALL_SPEED) vy = -MAX_FALL_SPEED;
@@ -237,6 +248,14 @@ public abstract class Entity {
 
         // ---- Hurt timer countdown ----
         if (hurtTimer > 0) hurtTimer -= dt;
+
+        // ---- Walk animation state ----
+        float distMoved = (float) Math.sqrt((x - prevX) * (x - prevX) + (z - prevZ) * (z - prevZ));
+        limbSwing += distMoved * 4.0f;
+        float speed = distMoved / Math.max(dt, 0.001f);
+        float targetAmount = Math.min(speed * 0.3f, 1.0f);
+        limbSwingAmount += (targetAmount - limbSwingAmount) * 0.4f;
+        if (limbSwingAmount < 0.003f) limbSwingAmount = 0;
     }
 
     // ================================================================
@@ -362,4 +381,7 @@ public abstract class Entity {
     public float getAge() { return age; }
     public float getHurtTimer() { return hurtTimer; }
     public boolean isOnGround() { return onGround; }
+    public float getLimbSwing() { return limbSwing; }
+    public float getLimbSwingAmount() { return limbSwingAmount; }
+    public boolean isBurning() { return burning; }
 }

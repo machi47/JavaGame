@@ -88,6 +88,24 @@ public final class RecipeRegistry {
         recipes.add(new Recipe(2, 2, new int[]{ COBBLE, 0, 0, STICK }, Blocks.STONE_SWORD.id(), 1));
         recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, 0, 0, STICK }, Blocks.IRON_SWORD.id(), 1));
 
+        // ---- Redstone & Extended Rail recipes ----
+
+        int GOLD_INGOT = Blocks.GOLD_INGOT.id();
+        int REDSTONE = Blocks.REDSTONE.id();
+        int REDSTONE_TORCH = Blocks.REDSTONE_TORCH.id();
+
+        // Powered rail: gold ingot + stick → 6 powered rails (simplified 2x2)
+        recipes.add(new Recipe(2, 2, new int[]{ GOLD_INGOT, 0, STICK, 0 }, Blocks.POWERED_RAIL.id(), 6));
+
+        // Redstone torch: redstone + stick → 1 (like regular torch but with redstone)
+        recipes.add(new Recipe(1, 2, new int[]{ REDSTONE, STICK }, Blocks.REDSTONE_TORCH.id(), 1));
+
+        // Redstone repeater: stone + redstone torch + redstone (simplified 2x2)
+        recipes.add(new Recipe(2, 2, new int[]{ REDSTONE_TORCH, REDSTONE, COBBLE, COBBLE }, Blocks.REDSTONE_REPEATER.id(), 1));
+
+        // Redstone wire placement: redstone item placed directly becomes wire
+        // (handled in GameLoop, not a crafting recipe — redstone item IS the wire material)
+
         System.out.println("[RecipeRegistry] Registered " + recipes.size() + " recipes");
     }
 }

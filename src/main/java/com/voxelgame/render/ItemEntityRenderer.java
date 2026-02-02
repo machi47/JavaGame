@@ -15,16 +15,16 @@ import static org.lwjgl.opengl.GL33.*;
 public class ItemEntityRenderer {
 
     private static final float[][] BLOCK_COLORS = {
-        {0.0f, 0.0f, 0.0f},       // 0 AIR
-        {0.47f, 0.47f, 0.47f},     // 1 STONE
-        {0.39f, 0.39f, 0.39f},     // 2 COBBLESTONE
-        {0.53f, 0.38f, 0.26f},     // 3 DIRT
-        {0.30f, 0.60f, 0.00f},     // 4 GRASS
-        {0.84f, 0.81f, 0.60f},     // 5 SAND
-        {0.51f, 0.49f, 0.49f},     // 6 GRAVEL
-        {0.39f, 0.27f, 0.16f},     // 7 LOG
-        {0.20f, 0.51f, 0.04f},     // 8 LEAVES
-        {0.12f, 0.31f, 0.78f},     // 9 WATER
+        {0.0f, 0.0f, 0.0f},       //  0 AIR
+        {0.47f, 0.47f, 0.47f},     //  1 STONE
+        {0.39f, 0.39f, 0.39f},     //  2 COBBLESTONE
+        {0.53f, 0.38f, 0.26f},     //  3 DIRT
+        {0.30f, 0.60f, 0.00f},     //  4 GRASS
+        {0.84f, 0.81f, 0.60f},     //  5 SAND
+        {0.51f, 0.49f, 0.49f},     //  6 GRAVEL
+        {0.39f, 0.27f, 0.16f},     //  7 LOG
+        {0.20f, 0.51f, 0.04f},     //  8 LEAVES
+        {0.12f, 0.31f, 0.78f},     //  9 WATER
         {0.35f, 0.35f, 0.35f},     // 10 COAL_ORE
         {0.55f, 0.45f, 0.35f},     // 11 IRON_ORE
         {0.75f, 0.65f, 0.20f},     // 12 GOLD_ORE
@@ -32,6 +32,43 @@ public class ItemEntityRenderer {
         {0.16f, 0.16f, 0.16f},     // 14 BEDROCK
         {0.95f, 0.55f, 0.50f},     // 15 RAW_PORKCHOP
         {0.55f, 0.40f, 0.25f},     // 16 ROTTEN_FLESH
+        {0.70f, 0.55f, 0.30f},     // 17 PLANKS
+        {0.60f, 0.45f, 0.25f},     // 18 CRAFTING_TABLE
+        {0.65f, 0.50f, 0.25f},     // 19 STICK
+        {0.58f, 0.42f, 0.20f},     // 20 WOODEN_PICKAXE
+        {0.55f, 0.40f, 0.18f},     // 21 WOODEN_AXE
+        {0.52f, 0.38f, 0.16f},     // 22 WOODEN_SHOVEL
+        {0.50f, 0.50f, 0.52f},     // 23 STONE_PICKAXE
+        {0.48f, 0.48f, 0.50f},     // 24 STONE_AXE
+        {0.46f, 0.46f, 0.48f},     // 25 STONE_SHOVEL
+        {0.60f, 0.40f, 0.20f},     // 26 CHEST
+        {0.45f, 0.45f, 0.45f},     // 27 RAIL
+        {0.85f, 0.20f, 0.15f},     // 28 TNT
+        {0.55f, 0.35f, 0.15f},     // 29 BOAT
+        {0.50f, 0.50f, 0.55f},     // 30 MINECART
+        {0.45f, 0.45f, 0.45f},     // 31 FURNACE
+        {1.00f, 0.85f, 0.30f},     // 32 TORCH
+        {0.14f, 0.14f, 0.14f},     // 33 COAL (dark charcoal)
+        {0.78f, 0.76f, 0.74f},     // 34 IRON_INGOT
+        {0.82f, 0.90f, 0.94f},     // 35 GLASS
+        {0.78f, 0.51f, 0.31f},     // 36 COOKED_PORKCHOP
+        {0.86f, 0.15f, 0.15f},     // 37 RED_FLOWER
+        {1.00f, 0.90f, 0.20f},     // 38 YELLOW_FLOWER
+        {0.50f, 0.90f, 1.00f},     // 39 DIAMOND
+        {0.78f, 0.78f, 0.80f},     // 40 IRON_PICKAXE
+        {0.78f, 0.78f, 0.80f},     // 41 IRON_AXE
+        {0.78f, 0.78f, 0.80f},     // 42 IRON_SHOVEL
+        {0.78f, 0.78f, 0.80f},     // 43 IRON_SWORD
+        {0.60f, 0.45f, 0.22f},     // 44 WOODEN_SWORD
+        {0.50f, 0.50f, 0.52f},     // 45 STONE_SWORD
+        {0.22f, 0.16f, 0.10f},     // 46 CHARCOAL
+        {0.90f, 0.75f, 0.20f},     // 47 GOLD_INGOT
+        {0.55f, 0.45f, 0.35f},     // 48 POWERED_RAIL
+        {0.70f, 0.10f, 0.05f},     // 49 REDSTONE
+        {0.70f, 0.10f, 0.05f},     // 50 REDSTONE_WIRE
+        {0.70f, 0.15f, 0.10f},     // 51 REDSTONE_TORCH
+        {0.60f, 0.15f, 0.10f},     // 52 REDSTONE_REPEATER
+        {0.50f, 0.35f, 0.35f},     // 53 REDSTONE_ORE
     };
 
     private Shader shader;
