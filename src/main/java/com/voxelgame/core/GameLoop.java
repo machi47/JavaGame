@@ -30,6 +30,7 @@ import com.voxelgame.sim.FurnaceManager;
 import com.voxelgame.sim.MobSpawner;
 import com.voxelgame.sim.Physics;
 import com.voxelgame.sim.Player;
+import com.voxelgame.sim.RedstoneSystem;
 import com.voxelgame.sim.TNTEntity;
 import com.voxelgame.sim.ToolItem;
 import com.voxelgame.sim.Inventory;
@@ -131,6 +132,7 @@ public class GameLoop {
     private EntityRenderer entityRenderer;
     private ChestManager chestManager;
     private FurnaceManager furnaceManager;
+    private RedstoneSystem redstoneSystem;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -553,6 +555,7 @@ public class GameLoop {
 
         blockBreakProgress = new BlockBreakProgress();
         itemEntityManager = new ItemEntityManager();
+        controller.setItemEntityManager(itemEntityManager);
         itemEntityRenderer = new ItemEntityRenderer();
         itemEntityRenderer.init();
 
@@ -561,6 +564,7 @@ public class GameLoop {
         mobSpawner = new MobSpawner();
         entityRenderer = new EntityRenderer();
         entityRenderer.init();
+        redstoneSystem = new RedstoneSystem();
 
         // Initial chunk load
         chunkManager.update(player);
@@ -658,6 +662,8 @@ public class GameLoop {
         entityManager = null;
         mobSpawner = null;
         entityRenderer = null;
+        if (redstoneSystem != null) redstoneSystem.clear();
+        redstoneSystem = null;
         currentHit = null;
         currentWorldFolder = null;
         gameInitialized = false;
@@ -963,6 +969,23 @@ public class GameLoop {
             inventoryScreen.updateDrag(player.getInventory(),
                 Input.isLeftMouseDown(), Input.isRightMouseDown(),
                 Input.getMouseX(), Input.getMouseY(), w, h);
+            // Q key: drop hovered item from inventory screen
+            if (Input.isKeyPressed(GLFW_KEY_Q)) {
+                int hovered = inventoryScreen.getHoveredSlot();
+                if (hovered >= 0 && hovered < Inventory.TOTAL_SIZE) {
+                    Inventory.ItemStack stack = player.getInventory().getSlot(hovered);
+                    if (stack != null && !stack.isEmpty()) {
+                        boolean ctrlHeld = Input.isKeyDown(GLFW_KEY_LEFT_CONTROL)
+                                        || Input.isKeyDown(GLFW_KEY_RIGHT_CONTROL);
+                        int dropCount = ctrlHeld ? stack.getCount() : 1;
+                        int durability = stack.hasDurability() ? stack.getDurability() : -1;
+                        int maxDur = stack.hasDurability() ? stack.getMaxDurability() : -1;
+                        itemEntityManager.dropFromPlayer(player, stack.getBlockId(), dropCount, durability, maxDur);
+                        stack.remove(dropCount);
+                        if (stack.isEmpty()) player.getInventory().setSlot(hovered, null);
+                    }
+                }
+            }
         }
 
         // Creative inventory clicks + mouse tracking + scroll
@@ -1276,6 +1299,11 @@ public class GameLoop {
                     int pz = currentHit.z() + currentHit.nz();
                     int placedBlockId = player.getSelectedBlock();
 
+                    // Redstone item places as redstone wire
+                    if (placedBlockId == Blocks.REDSTONE.id()) {
+                        placedBlockId = Blocks.REDSTONE_WIRE.id();
+                    }
+
                     if (placedBlockId > 0 && (Blocks.get(placedBlockId).solid() || Blocks.isNonSolidPlaceable(placedBlockId))) {
                         boolean canPlace;
 
@@ -1298,9 +1326,21 @@ public class GameLoop {
                                 furnaceManager.createFurnace(px, py, pz);
                             }
 
-                            // If we placed a torch, propagate block light
-                            if (placedBlockId == Blocks.TORCH.id()) {
+                            // If we placed a torch or redstone torch, propagate block light
+                            if (placedBlockId == Blocks.TORCH.id() || placedBlockId == Blocks.REDSTONE_TORCH.id()) {
                                 propagateBlockLight(px, py, pz, Blocks.getLightEmission(placedBlockId));
+                            }
+
+                            // Redstone components: propagate redstone power
+                            if (Blocks.isRedstoneComponent(placedBlockId) && redstoneSystem != null) {
+                                Set<ChunkPos> rsAffected = redstoneSystem.onRedstonePlaced(world, px, py, pz);
+                                chunkManager.rebuildChunks(rsAffected);
+                            }
+
+                            // Any block placed might affect adjacent redstone
+                            if (redstoneSystem != null && !Blocks.isRedstoneComponent(placedBlockId)) {
+                                Set<ChunkPos> rsAffected = redstoneSystem.onBlockChanged(world, px, py, pz);
+                                chunkManager.rebuildChunks(rsAffected);
                             }
 
                             if (agentUse && agentActionQueue != null) {
@@ -1323,6 +1363,7 @@ public class GameLoop {
                         int mpy = currentHit.y() + currentHit.ny();
                         int mpz = currentHit.z() + currentHit.nz();
                         Minecart cart = new Minecart(mpx + 0.5f, mpy, mpz + 0.5f);
+                        cart.setRedstoneSystem(redstoneSystem);
                         entityManager.addEntity(cart);
                         if (!isCreative) player.consumeSelectedBlock();
                         System.out.println("[Minecart] Placed minecart at " + mpx + ", " + mpy + ", " + mpz);
@@ -1379,10 +1420,32 @@ public class GameLoop {
             }
         }
 
+        // Handle redstone component removal (before block is removed)
+        boolean wasRedstone = Blocks.isRedstoneComponent(blockId);
+        int oldLightEmission = Blocks.getLightEmission(blockId);
+
         world.setBlock(bx, by, bz, 0);
         Set<ChunkPos> affected = Lighting.onBlockRemoved(world, bx, by, bz);
         chunkManager.rebuildMeshAt(bx, by, bz);
         chunkManager.rebuildChunks(affected);
+
+        // Remove redstone power propagation
+        if (wasRedstone && redstoneSystem != null) {
+            Set<ChunkPos> rsAffected = redstoneSystem.onRedstoneRemoved(world, bx, by, bz, blockId);
+            chunkManager.rebuildChunks(rsAffected);
+        }
+
+        // Any block removed might affect adjacent redstone
+        if (!wasRedstone && redstoneSystem != null) {
+            Set<ChunkPos> rsAffected = redstoneSystem.onBlockChanged(world, bx, by, bz);
+            chunkManager.rebuildChunks(rsAffected);
+        }
+
+        // Remove block light if this was a light source (redstone torch, etc.)
+        if (oldLightEmission > 0) {
+            Set<ChunkPos> lightAffected = Lighting.onLightSourceRemoved(world, bx, by, bz, oldLightEmission);
+            chunkManager.rebuildChunks(lightAffected);
+        }
 
         if (spawnDrops) {
             int dropId = block.getDrop();
