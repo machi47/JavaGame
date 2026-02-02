@@ -248,6 +248,20 @@ public class Player {
         float scaled = amount * difficulty.getDamageMultiplier(source);
         if (scaled <= 0) return;
 
+        // Apply armor damage reduction
+        float totalDefense = inventory.getTotalArmorDefense();
+        if (totalDefense > 0) {
+            // Armor reduces damage: 1 defense point = 4% reduction (max 80% at 20 points)
+            float reduction = Math.min(totalDefense * 0.04f, 0.80f);
+            float reducedDamage = scaled * (1.0f - reduction);
+            System.out.printf("[Armor] Defense: %.1f points (%.0f%% reduction) — %.1f → %.1f damage%n",
+                totalDefense, reduction * 100, scaled, reducedDamage);
+            scaled = reducedDamage;
+            
+            // Damage armor pieces
+            inventory.damageArmor();
+        }
+
         health -= scaled;
         damageFlashTimer = DAMAGE_FLASH_DURATION;
 

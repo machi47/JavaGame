@@ -13,6 +13,7 @@ import com.voxelgame.render.PostFX;
 import com.voxelgame.render.Renderer;
 import com.voxelgame.save.SaveManager;
 import com.voxelgame.save.WorldMeta;
+import com.voxelgame.sim.ArmorItem;
 import com.voxelgame.sim.BlockBreakProgress;
 import com.voxelgame.sim.Boat;
 import com.voxelgame.sim.Chest;
@@ -1292,6 +1293,31 @@ public class GameLoop {
                 else if (player.getSelectedBlock() == Blocks.COOKED_PORKCHOP.id()
                          || player.getSelectedBlock() == Blocks.RAW_PORKCHOP.id()) {
                     player.tryEatHeldItem();
+                }
+                // Try to equip armor
+                else if (ArmorItem.isArmor(player.getSelectedBlock())) {
+                    ArmorItem.Slot armorSlot = ArmorItem.getSlot(player.getSelectedBlock());
+                    if (armorSlot != null) {
+                        Inventory.ItemStack currentArmor = player.getInventory().getArmor(armorSlot.index);
+                        
+                        // If there's already armor in that slot, swap it
+                        if (currentArmor != null && !currentArmor.isEmpty()) {
+                            int oldArmorId = currentArmor.getBlockId();
+                            player.getInventory().setArmor(armorSlot.index, null);
+                            player.setSelectedBlock(oldArmorId);
+                        } else if (!isCreative) {
+                            // Consume from inventory in survival
+                            player.consumeSelectedBlock();
+                        }
+                        
+                        // Equip new armor (with full durability)
+                        int maxDur = ArmorItem.getMaxDurability(player.getSelectedBlock());
+                        Inventory.ItemStack armorStack = new Inventory.ItemStack(player.getSelectedBlock(), maxDur, maxDur);
+                        player.getInventory().setArmor(armorSlot.index, armorStack);
+                        
+                        System.out.printf("[Armor] Equipped %s (slot %s, %d durability)%n",
+                            ArmorItem.getDisplayName(player.getSelectedBlock()), armorSlot, maxDur);
+                    }
                 } else {
                     // Normal block placement
                     int px = currentHit.x() + currentHit.nx();
