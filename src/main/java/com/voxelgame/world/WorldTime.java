@@ -34,6 +34,14 @@ public class WorldTime {
     public static final int NIGHT_START   = 13000;
     public static final int DAWN_START    = 23000;
 
+    // ---- Brightness tuning ----
+    /** Peak sun brightness at midday. 1.0 was overexposed; 0.8 gives bright but natural daylight. */
+    private static final float PEAK_SUN_BRIGHTNESS = 0.8f;
+    /** Minimum brightness at full night (moonlight). Keeps night very dark; torches essential. */
+    private static final float NIGHT_BRIGHTNESS = 0.05f;
+    /** Brightness range for transition interpolation. */
+    private static final float BRIGHTNESS_RANGE = PEAK_SUN_BRIGHTNESS - NIGHT_BRIGHTNESS;
+
     // ---- State ----
     private long worldTick = 6000; // start at mid-morning
     private float tickAccumulator = 0;
@@ -97,30 +105,27 @@ public class WorldTime {
         int tod = getTimeOfDay();
 
         if (tod >= DAY_START && tod < SUNSET_START) {
-            // Full daylight
-            return 1.0f;
+            // Full daylight — capped below 1.0 to avoid overexposed/washed-out look
+            return PEAK_SUN_BRIGHTNESS;
         } else if (tod >= NIGHT_START && tod < DAWN_START) {
             // Full night — moonlight only (very dim)
-            // Moon provides light level ~4/15 = 0.27, but we want it darker
-            // than that since this modulates the skylight which is already 0-1.
             // At 0.05, a sky-lit surface gets 0.05 brightness = very dark.
-            return 0.05f;
+            return NIGHT_BRIGHTNESS;
         } else if (tod < DAY_START) {
             // Sunrise transition (0-1000)
             float t = tod / (float) DAY_START;
-            // Smooth ease: use smoothstep for natural sunrise
             t = smoothstep(t);
-            return 0.05f + 0.95f * t;
+            return NIGHT_BRIGHTNESS + BRIGHTNESS_RANGE * t;
         } else if (tod < NIGHT_START) {
             // Sunset transition (12000-13000)
             float t = (tod - SUNSET_START) / (float) (NIGHT_START - SUNSET_START);
             t = smoothstep(t);
-            return 1.0f - 0.95f * t;
+            return PEAK_SUN_BRIGHTNESS - BRIGHTNESS_RANGE * t;
         } else {
             // Dawn transition (23000-24000)
             float t = (tod - DAWN_START) / (float) (DAY_LENGTH - DAWN_START);
             t = smoothstep(t);
-            return 0.05f + 0.95f * t;
+            return NIGHT_BRIGHTNESS + BRIGHTNESS_RANGE * t;
         }
     }
 
@@ -131,8 +136,8 @@ public class WorldTime {
     public float[] getSkyColor() {
         float brightness = getSunBrightness();
         if (brightness > 0.5f) {
-            // Day: bright blue sky
-            float t = (brightness - 0.5f) * 2.0f;
+            // Day: bright blue sky (normalize against peak so sky reaches full color)
+            float t = (brightness - 0.5f) / (PEAK_SUN_BRIGHTNESS - 0.5f);
             return new float[]{
                 lerp(0.15f, 0.53f, t),
                 lerp(0.15f, 0.68f, t),
