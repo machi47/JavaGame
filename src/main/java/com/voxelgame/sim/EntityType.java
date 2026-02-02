@@ -8,5 +8,6 @@ public enum EntityType {
     ZOMBIE,
     BOAT,
     MINECART,
-    TNT
+    TNT,
+    COW
 }

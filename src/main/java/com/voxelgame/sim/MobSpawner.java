@@ -31,6 +31,7 @@ public class MobSpawner {
 
     // ---- Max per type ----
     private static final int MAX_PIGS    = 15;
+    private static final int MAX_COWS    = 12;
     private static final int MAX_ZOMBIES = 20;
 
     // ---- Light thresholds ----
@@ -58,13 +59,18 @@ public class MobSpawner {
             despawnFarEntities(player, entityManager);
         }
 
-        // ---- Passive mob spawning (pigs) ----
+        // ---- Passive mob spawning (pigs + cows) ----
         passiveTimer += dt;
         if (passiveTimer >= PASSIVE_SPAWN_INTERVAL) {
             passiveTimer = 0;
 
-            if (worldTime.isDay() && entityManager.countType(EntityType.PIG) < MAX_PIGS) {
-                trySpawnPig(world, player, entityManager);
+            if (worldTime.isDay()) {
+                // 50/50 chance to spawn pig vs cow
+                if (random.nextBoolean() && entityManager.countType(EntityType.PIG) < MAX_PIGS) {
+                    trySpawnPig(world, player, entityManager);
+                } else if (entityManager.countType(EntityType.COW) < MAX_COWS) {
+                    trySpawnCow(world, player, entityManager);
+                }
             }
         }
 
@@ -130,6 +136,48 @@ public class MobSpawner {
             Pig pig = new Pig(sx, spawnY, sz);
             entityManager.addEntity(pig);
             System.out.printf("[Spawn] Pig spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            return;
+        }
+    }
+
+    /**
+     * Attempt to spawn a cow near the player.
+     * Requires grass block + air above, in bright areas (light >= 7).
+     */
+    private void trySpawnCow(World world, Player player, EntityManager entityManager) {
+        Vector3f pPos = player.getPosition();
+
+        for (int attempt = 0; attempt < 8; attempt++) {
+            float angle = random.nextFloat() * (float) (Math.PI * 2);
+            float dist = MIN_SPAWN_DIST + random.nextFloat() * (MAX_SPAWN_DIST - MIN_SPAWN_DIST);
+            float sx = pPos.x + (float) Math.cos(angle) * dist;
+            float sz = pPos.z + (float) Math.sin(angle) * dist;
+
+            int surfaceY = WorldConstants.WORLD_HEIGHT - 1;
+            for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
+                if (world.getBlock((int) Math.floor(sx), y, (int) Math.floor(sz)) != 0) {
+                    surfaceY = y;
+                    break;
+                }
+            }
+
+            // Must spawn on grass
+            if (world.getBlock((int) Math.floor(sx), surfaceY, (int) Math.floor(sz)) != Blocks.GRASS.id())
+                continue;
+
+            int spawnY = surfaceY + 1;
+            if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
+            if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
+
+            // Check light level — cows need light >= 7
+            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            int maxLight = Math.max(skyLight, blockLight);
+            if (maxLight < HOSTILE_MAX_LIGHT) continue; // too dark for passive mobs
+
+            Cow cow = new Cow(sx, spawnY, sz);
+            entityManager.addEntity(cow);
+            System.out.printf("[Spawn] Cow spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
             return;
         }
     }

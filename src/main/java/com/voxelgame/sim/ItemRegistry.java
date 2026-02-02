@@ -112,6 +112,8 @@ public final class ItemRegistry {
         // ---- Food ----
         register(Blocks.RAW_PORKCHOP.id(),    "Raw Porkchop",    Category.FOOD);
         register(Blocks.COOKED_PORKCHOP.id(), "Cooked Porkchop", Category.FOOD);
+        register(Blocks.RAW_BEEF.id(),        "Raw Beef",        Category.FOOD);
+        register(Blocks.COOKED_BEEF.id(),     "Cooked Beef",     Category.FOOD);
         register(Blocks.ROTTEN_FLESH.id(),    "Rotten Flesh",    Category.FOOD);
 
         // ---- Vehicles ----

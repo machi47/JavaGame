@@ -196,6 +196,10 @@ public class Player {
             healAmount = 8.0f;
         } else if (blockId == Blocks.RAW_PORKCHOP.id()) {
             healAmount = 3.0f;
+        } else if (blockId == Blocks.COOKED_BEEF.id()) {
+            healAmount = 8.0f;
+        } else if (blockId == Blocks.RAW_BEEF.id()) {
+            healAmount = 3.0f;
         }
 
         if (healAmount <= 0) return false;

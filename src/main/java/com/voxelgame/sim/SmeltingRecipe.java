@@ -39,6 +39,7 @@ public final class SmeltingRecipe {
 
         // Food cooking
         RECIPES.add(new Recipe(Blocks.RAW_PORKCHOP.id(), Blocks.COOKED_PORKCHOP.id(), 1));
+        RECIPES.add(new Recipe(Blocks.RAW_BEEF.id(), Blocks.COOKED_BEEF.id(), 1));
 
         System.out.println("[SmeltingRecipe] Registered " + RECIPES.size() + " smelting recipes");
     }
