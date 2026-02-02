@@ -5,6 +5,7 @@ import com.voxelgame.save.SaveManager;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.*;
 import com.voxelgame.world.gen.GenPipeline;
+import com.voxelgame.world.gen.LODGenPipeline;
 import com.voxelgame.world.lod.LODConfig;
 import com.voxelgame.world.lod.LODLevel;
 import com.voxelgame.world.lod.LODMesher;
@@ -206,74 +207,82 @@ public class ChunkManager {
     }
 
     /**
-     * Request chunks around player, sorted by distance (closest first).
-     * Uses full LOD render distance.
+     * Request chunks around player using spiral pattern for efficient loading.
+     * Close chunks (LOD 0-1) are prioritized, then distant (LOD 2-3).
+     *
+     * Uses a spiral scan pattern limited by per-frame budgets to avoid
+     * scanning all 65k+ positions in a 128-chunk radius each frame.
      */
     private void requestChunks(int pcx, int pcz) {
         int maxDist = lodConfig.getMaxRenderDistance();
-
-        // Build list of needed chunks with distance
-        List<int[]> needed = new ArrayList<>();
-        for (int dx = -maxDist; dx <= maxDist; dx++) {
-            for (int dz = -maxDist; dz <= maxDist; dz++) {
-                int distSq = dx * dx + dz * dz;
-                if (distSq > maxDist * maxDist) continue;
-                int cx = pcx + dx;
-                int cz = pcz + dz;
-                ChunkPos pos = new ChunkPos(cx, cz);
-                if (!world.isLoaded(cx, cz) && !pendingGen.containsKey(pos)) {
-                    needed.add(new int[]{cx, cz, distSq});
-                }
-            }
-        }
-
-        // Sort by distance (closest first)
-        needed.sort(Comparator.comparingInt(a -> a[2]));
-
-        // Enqueue generation tasks with per-frame budget
-        int closeEnqueued = 0;
-        int farEnqueued = 0;
         int closeMax = LODConfig.MAX_CLOSE_GEN_PER_FRAME;
         int farMax = LODConfig.MAX_FAR_GEN_PER_FRAME;
+        int closeEnqueued = 0;
+        int farEnqueued = 0;
 
-        for (int[] entry : needed) {
-            int cx = entry[0], cz = entry[1], distSq = entry[2];
-            LODLevel level = lodConfig.getLevelForDistance(distSq);
+        // Spiral scan: dx,dz from center outward
+        // This naturally prioritizes close chunks without needing a full sort
+        for (int ring = 0; ring <= maxDist; ring++) {
+            if (closeEnqueued >= closeMax && farEnqueued >= farMax) break;
 
-            boolean isClose = (level == LODLevel.LOD_0 || level == LODLevel.LOD_1);
-            if (isClose && closeEnqueued >= closeMax) continue;
-            if (!isClose && farEnqueued >= farMax) continue;
+            // Scan the perimeter of the current ring
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
+                    // Only process the ring perimeter (not interior — already done)
+                    if (Math.abs(dx) != ring && Math.abs(dz) != ring) continue;
 
-            ChunkPos pos = new ChunkPos(cx, cz);
+                    int distSq = dx * dx + dz * dz;
+                    if (distSq > maxDist * maxDist) continue;
 
-            // Try loading from disk first (synchronous but fast)
-            if (saveManager != null) {
-                Chunk loaded = saveManager.loadChunk(cx, cz);
-                if (loaded != null) {
-                    loaded.setCurrentLOD(level);
-                    world.addChunk(pos, loaded);
-                    if (level == LODLevel.LOD_0) {
-                        Lighting.computeInitialSkyLight(loaded, world);
-                        Lighting.computeInitialBlockLight(loaded, world);
-                        submitMeshJob(loaded, pos, true);
-                    } else {
-                        submitLODMeshJob(loaded, pos, level);
+                    int cx = pcx + dx;
+                    int cz = pcz + dz;
+                    ChunkPos pos = new ChunkPos(cx, cz);
+                    if (world.isLoaded(cx, cz) || pendingGen.containsKey(pos)) continue;
+
+                    LODLevel level = lodConfig.getLevelForDistance(distSq);
+                    boolean isClose = (level == LODLevel.LOD_0 || level == LODLevel.LOD_1);
+
+                    if (isClose && closeEnqueued >= closeMax) continue;
+                    if (!isClose && farEnqueued >= farMax) continue;
+
+                    // Try loading from disk first
+                    if (saveManager != null) {
+                        Chunk loaded = saveManager.loadChunk(cx, cz);
+                        if (loaded != null) {
+                            loaded.setCurrentLOD(level);
+                            world.addChunk(pos, loaded);
+                            if (level == LODLevel.LOD_0) {
+                                Lighting.computeInitialSkyLight(loaded, world);
+                                Lighting.computeInitialBlockLight(loaded, world);
+                                submitMeshJob(loaded, pos, true);
+                            } else {
+                                submitLODMeshJob(loaded, pos, level);
+                            }
+                            if (isClose) closeEnqueued++; else farEnqueued++;
+                            continue;
+                        }
                     }
+
+                    // Submit async generation task
+                    // Use simplified pipeline for distant chunks (LOD 2+)
+                    final LODLevel genLevel = level;
+                    Future<Chunk> future = genPool.submit(() -> {
+                        Chunk chunk = new Chunk(pos);
+                        if (genLevel.level() >= 2) {
+                            // Simplified: terrain + surface only (no caves/ores/trees)
+                            LODGenPipeline lodPipeline = new LODGenPipeline(seed);
+                            lodPipeline.generateSimplified(chunk);
+                        } else {
+                            GenPipeline pipeline = GenPipeline.createDefault(seed);
+                            pipeline.generate(chunk);
+                        }
+                        chunk.setCurrentLOD(genLevel);
+                        return chunk;
+                    });
+                    pendingGen.put(pos, future);
                     if (isClose) closeEnqueued++; else farEnqueued++;
-                    continue;
                 }
             }
-
-            // Submit async generation task
-            Future<Chunk> future = genPool.submit(() -> {
-                GenPipeline pipeline = GenPipeline.createDefault(seed);
-                Chunk chunk = new Chunk(pos);
-                pipeline.generate(chunk);
-                chunk.setCurrentLOD(level);
-                return chunk;
-            });
-            pendingGen.put(pos, future);
-            if (isClose) closeEnqueued++; else farEnqueued++;
         }
     }
 
