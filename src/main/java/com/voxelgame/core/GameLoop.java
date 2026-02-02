@@ -115,6 +115,7 @@ public class GameLoop {
     private BlockHighlight blockHighlight;
     private DeathScreen deathScreen;
     private InventoryScreen inventoryScreen;
+    private CreativeInventoryScreen creativeInventoryScreen;
     private ChestScreen chestScreen;
     private FurnaceScreen furnaceScreen;
 
@@ -480,6 +481,11 @@ public class GameLoop {
         inventoryScreen.setAtlas(renderer.getAtlas());
         controller.setInventoryScreen(inventoryScreen);
 
+        creativeInventoryScreen = new CreativeInventoryScreen();
+        creativeInventoryScreen.init(bitmapFont);
+        creativeInventoryScreen.setAtlas(renderer.getAtlas());
+        controller.setCreativeInventoryScreen(creativeInventoryScreen);
+
         chestScreen = new ChestScreen();
         chestScreen.init(bitmapFont);
         chestManager = new ChestManager();
@@ -579,6 +585,7 @@ public class GameLoop {
         if (blockHighlight != null) blockHighlight.cleanup();
         if (deathScreen != null) deathScreen.cleanup();
         if (inventoryScreen != null) inventoryScreen.cleanup();
+        if (creativeInventoryScreen != null) creativeInventoryScreen.cleanup();
         if (chestScreen != null) chestScreen.cleanup();
         if (furnaceScreen != null) furnaceScreen.cleanup();
         if (entityRenderer != null) entityRenderer.cleanup();
@@ -600,6 +607,7 @@ public class GameLoop {
         blockHighlight = null;
         deathScreen = null;
         inventoryScreen = null;
+        creativeInventoryScreen = null;
         chestScreen = null;
         chestManager = null;
         furnaceScreen = null;
@@ -811,6 +819,9 @@ public class GameLoop {
             } else if (chestScreen != null && chestScreen.isOpen()) {
                 chestScreen.close(player.getInventory());
                 Input.lockCursor();
+            } else if (creativeInventoryScreen != null && creativeInventoryScreen.isOpen()) {
+                creativeInventoryScreen.close(player.getInventory());
+                Input.lockCursor();
             } else if (inventoryScreen != null && inventoryScreen.isOpen()) {
                 inventoryScreen.close(player.getInventory());
                 Input.lockCursor();
@@ -837,7 +848,8 @@ public class GameLoop {
         // Inform controller about external screen state
         controller.setExternalScreenOpen(
             (chestScreen != null && chestScreen.isOpen()) ||
-            (furnaceScreen != null && furnaceScreen.isOpen()));
+            (furnaceScreen != null && furnaceScreen.isOpen()) ||
+            (creativeInventoryScreen != null && creativeInventoryScreen.isOpen()));
 
         // Update timers
         player.updateDamageFlash(dt);
@@ -883,7 +895,8 @@ public class GameLoop {
         // Raycast
         boolean anyScreenOpen = controller.isInventoryOpen()
             || (chestScreen != null && chestScreen.isOpen())
-            || (furnaceScreen != null && furnaceScreen.isOpen());
+            || (furnaceScreen != null && furnaceScreen.isOpen())
+            || (creativeInventoryScreen != null && creativeInventoryScreen.isOpen());
         if (!player.isDead() && !anyScreenOpen) {
             currentHit = Raycast.cast(
                 world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
@@ -911,6 +924,25 @@ public class GameLoop {
             inventoryScreen.updateDrag(player.getInventory(),
                 Input.isLeftMouseDown(), Input.isRightMouseDown(),
                 Input.getMouseX(), Input.getMouseY(), w, h);
+        }
+
+        // Creative inventory clicks + mouse tracking + scroll
+        if (creativeInventoryScreen != null && creativeInventoryScreen.isVisible()) {
+            creativeInventoryScreen.updateMouse(Input.getMouseX(), Input.getMouseY(), h);
+            if (Input.isLeftMouseClicked()) {
+                creativeInventoryScreen.handleClick(player.getInventory(),
+                    Input.getMouseX(), Input.getMouseY(), w, h,
+                    Input.isKeyDown(GLFW_KEY_LEFT_SHIFT));
+            }
+            if (Input.isRightMouseClicked()) {
+                creativeInventoryScreen.handleRightClick(player.getInventory(),
+                    Input.getMouseX(), Input.getMouseY(), w, h);
+            }
+            // Scroll for creative grid
+            double scrollY = Input.getScrollDY();
+            if (scrollY != 0) {
+                creativeInventoryScreen.handleScroll(scrollY);
+            }
         }
 
         // Furnace screen clicks + mouse tracking
@@ -1030,6 +1062,10 @@ public class GameLoop {
 
         if (inventoryScreen.isVisible()) {
             inventoryScreen.render(w, h, player.getInventory());
+        }
+
+        if (creativeInventoryScreen != null && creativeInventoryScreen.isVisible()) {
+            creativeInventoryScreen.render(w, h, player.getInventory());
         }
 
         if (chestScreen != null && chestScreen.isVisible()) {
