@@ -4,11 +4,12 @@ import com.voxelgame.sim.Inventory;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.World;
 import com.voxelgame.world.WorldConstants;
+import com.voxelgame.world.stream.ChunkManager;
 import org.joml.Vector3f;
 
 /**
  * Debug information overlay (F3 screen).
- * Shows FPS, position, chunk info, fly mode, and facing direction.
+ * Shows FPS, position, chunk info, fly mode, facing direction, and LOD stats.
  * Uses the BitmapFont renderer for on-screen text.
  */
 public class DebugOverlay {
@@ -47,14 +48,21 @@ public class DebugOverlay {
 
     /** Backward-compatible overload (no entity counts or time). */
     public void render(Player player, World world, int fps, int screenW, int screenH, boolean sprinting) {
-        render(player, world, fps, screenW, screenH, sprinting, 0, 0, "");
+        render(player, world, fps, screenW, screenH, sprinting, 0, 0, "", null, 0, 0);
+    }
+
+    /** Backward-compatible overload (no LOD stats). */
+    public void render(Player player, World world, int fps, int screenW, int screenH,
+                       boolean sprinting, int itemEntityCount, int mobCount, String worldTimeStr) {
+        render(player, world, fps, screenW, screenH, sprinting, itemEntityCount, mobCount, worldTimeStr, null, 0, 0);
     }
 
     /**
-     * Render debug text overlay.
+     * Render debug text overlay with LOD stats.
      */
     public void render(Player player, World world, int fps, int screenW, int screenH,
-                       boolean sprinting, int itemEntityCount, int mobCount, String worldTimeStr) {
+                       boolean sprinting, int itemEntityCount, int mobCount, String worldTimeStr,
+                       ChunkManager chunkManager, int renderedChunks, int culledChunks) {
         if (!visible) return;
 
         Vector3f pos = player.getPosition();
@@ -69,25 +77,53 @@ public class DebugOverlay {
 
         float feetY = pos.y - Player.EYE_HEIGHT;
 
-        String[] lines = {
-            String.format("FPS: %d", fps),
-            String.format("Pos: %.1f / %.1f / %.1f  (feet: %.1f)", pos.x, pos.y, pos.z, feetY),
-            String.format("Chunk: %d, %d", cx, cz),
-            String.format("Loaded chunks: %d", loadedChunks),
-            String.format("Fly: %s  Ground: %s  Sprint: %s",
-                player.isFlyMode() ? "ON" : "OFF",
-                player.isOnGround() ? "YES" : "NO",
-                sprinting ? "YES" : "NO"),
-            String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
-            String.format("Mode: %s  Difficulty: %s  HP: %.1f/%.1f",
-                player.getGameMode(), player.getDifficulty(),
-                player.getHealth(), player.getMaxHealth()),
-            String.format("  (F4=mode, F5=difficulty)"),
-            String.format("Inv: %d/%d slots  Items: %d  Mobs: %d  (E=inventory)",
-                player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE,
-                itemEntityCount, mobCount),
-            worldTimeStr.isEmpty() ? "" : String.format("Time: %s  Day %d", worldTimeStr, 0),
-        };
+        String[] lines;
+        if (chunkManager != null) {
+            lines = new String[]{
+                String.format("FPS: %d", fps),
+                String.format("Pos: %.1f / %.1f / %.1f  (feet: %.1f)", pos.x, pos.y, pos.z, feetY),
+                String.format("Chunk: %d, %d", cx, cz),
+                String.format("Loaded: %d  Rendered: %d  Culled: %d",
+                    loadedChunks, renderedChunks, culledChunks),
+                String.format("LOD 0: %d  LOD 1: %d  LOD 2: %d  LOD 3: %d",
+                    chunkManager.getLod0Count(), chunkManager.getLod1Count(),
+                    chunkManager.getLod2Count(), chunkManager.getLod3Count()),
+                String.format("Pending uploads: %d", chunkManager.getPendingUploads()),
+                String.format("Fly: %s  Ground: %s  Sprint: %s",
+                    player.isFlyMode() ? "ON" : "OFF",
+                    player.isOnGround() ? "YES" : "NO",
+                    sprinting ? "YES" : "NO"),
+                String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
+                String.format("Mode: %s  Difficulty: %s  HP: %.1f/%.1f",
+                    player.getGameMode(), player.getDifficulty(),
+                    player.getHealth(), player.getMaxHealth()),
+                String.format("  (F4=mode, F5=difficulty)"),
+                String.format("Inv: %d/%d slots  Items: %d  Mobs: %d  (E=inventory)",
+                    player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE,
+                    itemEntityCount, mobCount),
+                worldTimeStr.isEmpty() ? "" : String.format("Time: %s  Day %d", worldTimeStr, 0),
+            };
+        } else {
+            lines = new String[]{
+                String.format("FPS: %d", fps),
+                String.format("Pos: %.1f / %.1f / %.1f  (feet: %.1f)", pos.x, pos.y, pos.z, feetY),
+                String.format("Chunk: %d, %d", cx, cz),
+                String.format("Loaded chunks: %d", loadedChunks),
+                String.format("Fly: %s  Ground: %s  Sprint: %s",
+                    player.isFlyMode() ? "ON" : "OFF",
+                    player.isOnGround() ? "YES" : "NO",
+                    sprinting ? "YES" : "NO"),
+                String.format("Facing: %s (yaw %.1f / pitch %.1f)", facing, yaw, pitch),
+                String.format("Mode: %s  Difficulty: %s  HP: %.1f/%.1f",
+                    player.getGameMode(), player.getDifficulty(),
+                    player.getHealth(), player.getMaxHealth()),
+                String.format("  (F4=mode, F5=difficulty)"),
+                String.format("Inv: %d/%d slots  Items: %d  Mobs: %d  (E=inventory)",
+                    player.getInventory().getUsedSlotCount(), Inventory.TOTAL_SIZE,
+                    itemEntityCount, mobCount),
+                worldTimeStr.isEmpty() ? "" : String.format("Time: %s  Day %d", worldTimeStr, 0),
+            };
+        }
 
         // Render each line with shadow for readability
         float y = MARGIN_Y;

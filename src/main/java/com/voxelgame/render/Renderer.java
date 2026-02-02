@@ -4,6 +4,9 @@ import com.voxelgame.world.Chunk;
 import com.voxelgame.world.ChunkPos;
 import com.voxelgame.world.World;
 import com.voxelgame.world.WorldTime;
+import com.voxelgame.world.lod.LODConfig;
+import com.voxelgame.world.lod.LODLevel;
+import com.voxelgame.world.mesh.ChunkMesh;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -12,6 +15,11 @@ import static org.lwjgl.opengl.GL33.*;
 /**
  * Main rendering coordinator. Binds shader, sets uniforms,
  * renders visible chunk meshes with frustum culling.
+ *
+ * Supports multi-tier LOD rendering:
+ * - LOD 0: Full detail opaque + transparent passes
+ * - LOD 1-3: Opaque-only simplified meshes
+ * - Dynamic fog distance based on LOD config
  *
  * Uses two passes:
  *   1. Opaque pass  — depth write ON, blend OFF
@@ -32,6 +40,13 @@ public class Renderer {
     /** Current fog/sky color. Updated each frame from WorldTime. */
     private float[] fogColor = {0.53f, 0.68f, 0.90f};
 
+    /** LOD configuration — controls fog distances. May be null if LOD not initialized. */
+    private LODConfig lodConfig;
+
+    // ---- Render stats ----
+    private int renderedChunks;
+    private int culledChunks;
+
     public Renderer(World world) {
         this.world = world;
     }
@@ -41,6 +56,11 @@ public class Renderer {
         atlas = new TextureAtlas();
         atlas.init();
         frustum = new Frustum();
+    }
+
+    /** Set the LOD config for dynamic fog distances. */
+    public void setLodConfig(LODConfig lodConfig) {
+        this.lodConfig = lodConfig;
     }
 
     /** Update sun brightness and fog color from world time. Call once per frame. */
@@ -59,6 +79,16 @@ public class Renderer {
         Matrix4f projView = new Matrix4f(projection).mul(view);
         frustum.update(projView);
 
+        // Compute fog distances from LOD config
+        float fogStart, fogEnd;
+        if (lodConfig != null) {
+            fogStart = lodConfig.getFogStart();
+            fogEnd = lodConfig.getFogEnd();
+        } else {
+            fogStart = 80.0f;
+            fogEnd = 128.0f;
+        }
+
         // Bind shader and set shared uniforms
         blockShader.bind();
         blockShader.setMat4("uProjection", projection);
@@ -67,25 +97,35 @@ public class Renderer {
         blockShader.setFloat("uSunBrightness", sunBrightness);
         blockShader.setVec3("uCameraPos", camera.getPosition());
         blockShader.setVec3("uFogColor", fogColor[0], fogColor[1], fogColor[2]);
+        blockShader.setFloat("uFogStart", fogStart);
+        blockShader.setFloat("uFogEnd", fogEnd);
 
         atlas.bind(0);
 
-        // ---- Pass 1: Opaque geometry ----
+        renderedChunks = 0;
+        culledChunks = 0;
+
+        // ---- Pass 1: Opaque geometry (all LOD levels) ----
         blockShader.setFloat("uAlpha", 1.0f);
 
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
             Chunk chunk = entry.getValue();
 
-            if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
+            if (!frustum.isChunkVisible(pos.x(), pos.z())) {
+                culledChunks++;
+                continue;
+            }
 
-            var mesh = chunk.getMesh();
+            // Use LOD-appropriate mesh
+            ChunkMesh mesh = chunk.getRenderMesh();
             if (mesh != null && !mesh.isEmpty()) {
                 mesh.draw();
+                renderedChunks++;
             }
         }
 
-        // ---- Pass 2: Transparent geometry (water) ----
+        // ---- Pass 2: Transparent geometry (water) — LOD 0 only ----
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);       // don't write to depth buffer
@@ -99,9 +139,10 @@ public class Renderer {
 
             if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
 
-            var mesh = chunk.getTransparentMesh();
-            if (mesh != null && !mesh.isEmpty()) {
-                mesh.draw();
+            // Only render transparent for LOD 0 chunks
+            ChunkMesh transMesh = chunk.getRenderTransparentMesh();
+            if (transMesh != null && !transMesh.isEmpty()) {
+                transMesh.draw();
             }
         }
 
@@ -114,6 +155,8 @@ public class Renderer {
     }
 
     public TextureAtlas getAtlas() { return atlas; }
+    public int getRenderedChunks() { return renderedChunks; }
+    public int getCulledChunks() { return culledChunks; }
 
     public void cleanup() {
         if (blockShader != null) blockShader.cleanup();

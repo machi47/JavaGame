@@ -255,6 +255,38 @@ public class GameLoop {
         settingsScreen = new SettingsScreen();
         settingsScreen.init(bitmapFont);
         settingsScreen.setCallback(() -> closeSettings());
+        settingsScreen.setChangeListener(new SettingsScreen.SettingsChangeListener() {
+            @Override public void onRenderDistanceChanged(int chunks) {
+                if (chunkManager != null) {
+                    chunkManager.getLodConfig().setLodThreshold(chunks);
+                    if (player != null) {
+                        player.getCamera().setFarPlane(chunkManager.getLodConfig().getFarPlane());
+                    }
+                }
+            }
+            @Override public void onFovChanged(float fov) {
+                if (player != null) player.getCamera().setFov(fov);
+            }
+            @Override public void onMouseSensitivityChanged(float sensitivity) {
+                // Handled by controller reading from settings
+            }
+            @Override public void onLodThresholdChanged(int chunks) {
+                if (chunkManager != null) {
+                    chunkManager.getLodConfig().setLodThreshold(chunks);
+                    if (player != null) {
+                        player.getCamera().setFarPlane(chunkManager.getLodConfig().getFarPlane());
+                    }
+                }
+            }
+            @Override public void onMaxLodDistanceChanged(int chunks) {
+                if (chunkManager != null) {
+                    chunkManager.getLodConfig().setMaxRenderDistance(chunks);
+                    if (player != null) {
+                        player.getCamera().setFarPlane(chunkManager.getLodConfig().getFarPlane());
+                    }
+                }
+            }
+        });
 
         // Check if direct world mode was requested (automation/legacy)
         if (createNewWorldMode && currentWorldFolder != null) {
@@ -380,6 +412,13 @@ public class GameLoop {
 
         chunkManager = new ChunkManager(world);
         chunkManager.setSaveManager(saveManager);
+
+        // Wire LOD config from settings to renderer and camera
+        var lodConfig = chunkManager.getLodConfig();
+        lodConfig.setLodThreshold(settingsScreen.getLodThreshold());
+        lodConfig.setMaxRenderDistance(settingsScreen.getMaxLodDistance());
+        renderer.setLodConfig(lodConfig);
+        player.getCamera().setFarPlane(lodConfig.getFarPlane());
 
         if (isNew) {
             // Create new world
@@ -1058,7 +1097,8 @@ public class GameLoop {
         hud.render(w, h, player);
         debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting(),
                 itemEntityManager.getItemCount(), entityManager.getEntityCount(),
-                worldTime.getTimeString());
+                worldTime.getTimeString(), chunkManager,
+                renderer.getRenderedChunks(), renderer.getCulledChunks());
 
         if (inventoryScreen.isVisible()) {
             inventoryScreen.render(w, h, player.getInventory());

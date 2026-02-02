@@ -5,6 +5,9 @@ import com.voxelgame.save.SaveManager;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.*;
 import com.voxelgame.world.gen.GenPipeline;
+import com.voxelgame.world.lod.LODConfig;
+import com.voxelgame.world.lod.LODLevel;
+import com.voxelgame.world.lod.LODMesher;
 import com.voxelgame.world.mesh.MeshResult;
 import com.voxelgame.world.mesh.RawMeshResult;
 import com.voxelgame.world.mesh.Mesher;
@@ -15,26 +18,25 @@ import java.util.concurrent.*;
 
 /**
  * Manages chunk lifecycle: loading, generation, meshing, and unloading.
- * Uses a thread pool for chunk generation and background meshing.
+ * Supports multi-tier LOD with distance-based mesh quality selection.
  *
  * Optimizations:
  * - Thread pool (4 workers) for parallel chunk generation
  * - Background mesh building on worker threads (CPU-side only)
  * - Per-frame upload limit to prevent GPU stalls
  * - Priority-based loading (closest chunks first)
- * - Aggressive unloading of distant chunks
+ * - LOD-aware: distant chunks get simplified meshes
+ * - Aggressive unloading of chunks beyond max render distance
  */
 public class ChunkManager {
 
-    private static final int RENDER_DISTANCE = 8; // chunks
-    private static final int UNLOAD_DISTANCE = RENDER_DISTANCE + 2;
-    private static final int GEN_THREAD_COUNT = 4;   // generation threads
-    private static final int MAX_MESH_UPLOADS_PER_FRAME = 6; // limit GPU uploads
-    private static final int MAX_GEN_PER_FRAME = 8;  // max generation tasks to enqueue per frame
-
     private final World world;
     private Mesher mesher;
+    private LODMesher lodMesher;
     private TextureAtlas atlas;
+
+    /** LOD configuration — controls distances and quality. */
+    private final LODConfig lodConfig = new LODConfig();
 
     /** Thread pool for chunk generation. */
     private ExecutorService genPool;
@@ -42,17 +44,20 @@ public class ChunkManager {
     /** Futures for in-flight chunk generation tasks. */
     private final ConcurrentHashMap<ChunkPos, Future<Chunk>> pendingGen = new ConcurrentHashMap<>();
 
-    /** Queue of chunks that need meshing (generated but not yet meshed). */
-    private final ConcurrentLinkedQueue<MeshJob> meshQueue = new ConcurrentLinkedQueue<>();
-
     /** Queue of completed mesh results ready for GPU upload (must happen on main thread). */
     private final ConcurrentLinkedQueue<MeshUpload> uploadQueue = new ConcurrentLinkedQueue<>();
+
+    /** Queue of completed LOD mesh results ready for GPU upload. */
+    private final ConcurrentLinkedQueue<LODMeshUpload> lodUploadQueue = new ConcurrentLinkedQueue<>();
 
     /** Thread pool for background meshing. */
     private ExecutorService meshPool;
 
     /** Set of chunks currently being meshed (to avoid double-meshing). */
     private final Set<ChunkPos> meshingInProgress = ConcurrentHashMap.newKeySet();
+
+    /** Set of chunks currently being LOD meshed. */
+    private final Set<ChunkPos> lodMeshingInProgress = ConcurrentHashMap.newKeySet();
 
     private int lastPlayerCX = Integer.MIN_VALUE;
     private int lastPlayerCZ = Integer.MIN_VALUE;
@@ -65,6 +70,13 @@ public class ChunkManager {
 
     /** Shared generation pipeline (thread-safe for read, individual instances for gen). */
     private GenPipeline sharedPipeline;
+
+    /** Frame counter for LOD update throttling. */
+    private int frameCount = 0;
+
+    // ---- Stats for debug overlay ----
+    private volatile int lod0Count, lod1Count, lod2Count, lod3Count;
+    private volatile int pendingUploads;
 
     public ChunkManager(World world) {
         this.world = world;
@@ -80,20 +92,26 @@ public class ChunkManager {
         this.seed = seed;
     }
 
+    /** Get the LOD configuration for settings changes. */
+    public LODConfig getLodConfig() {
+        return lodConfig;
+    }
+
     public void init(TextureAtlas atlas) {
         this.atlas = atlas;
         this.mesher = new NaiveMesher(atlas);
+        this.lodMesher = new LODMesher(atlas);
         this.sharedPipeline = GenPipeline.createDefault(seed);
 
         // Create thread pool for chunk generation
-        genPool = Executors.newFixedThreadPool(GEN_THREAD_COUNT, r -> {
+        genPool = Executors.newFixedThreadPool(LODConfig.GEN_THREAD_COUNT, r -> {
             Thread t = new Thread(r, "ChunkGen-Pool");
             t.setDaemon(true);
             return t;
         });
 
-        // Create thread pool for background meshing (2 threads)
-        meshPool = Executors.newFixedThreadPool(2, r -> {
+        // Create thread pool for background meshing (3 threads for LOD support)
+        meshPool = Executors.newFixedThreadPool(LODConfig.MESH_THREAD_COUNT, r -> {
             Thread t = new Thread(r, "ChunkMesh-Pool");
             t.setDaemon(true);
             return t;
@@ -103,46 +121,108 @@ public class ChunkManager {
     public void update(Player player) {
         int pcx = (int) Math.floor(player.getPosition().x / WorldConstants.CHUNK_SIZE);
         int pcz = (int) Math.floor(player.getPosition().z / WorldConstants.CHUNK_SIZE);
+        frameCount++;
 
         // 1. Process completed chunk generations
         processCompletedGenerations();
 
         // 2. Upload completed meshes to GPU (limited per frame)
         processMeshUploads();
+        processLODMeshUploads();
 
-        // 3. Rebuild dirty chunks (block changes)
+        // 3. Rebuild dirty chunks (block changes) — only for close chunks
         for (Chunk chunk : world.getLoadedChunks()) {
-            if (chunk.isDirty() && chunk.getMesh() != null) {
+            if (chunk.isDirty() && chunk.getMesh() != null &&
+                chunk.getCurrentLOD() == LODLevel.LOD_0) {
                 buildMesh(chunk);
             }
         }
 
-        // 4. Only update load/unload when player moves to new chunk
+        // 4. Update LOD levels for loaded chunks (every 10 frames to reduce overhead)
+        if (frameCount % 10 == 0) {
+            updateLODLevels(pcx, pcz);
+        }
+
+        // 5. Only update load/unload when player moves to new chunk
         if (pcx == lastPlayerCX && pcz == lastPlayerCZ) return;
         lastPlayerCX = pcx;
         lastPlayerCZ = pcz;
 
-        // 5. Request chunks within render distance (sorted by distance, closest first)
+        // 6. Request chunks within full LOD render distance (sorted by distance, closest first)
         requestChunks(pcx, pcz);
 
-        // 6. Unload far chunks
+        // 7. Unload far chunks
         unloadDistantChunks(pcx, pcz);
     }
 
     /**
+     * Update LOD levels for all loaded chunks based on distance to player.
+     * Triggers LOD mesh rebuilding when a chunk's LOD level changes.
+     */
+    private void updateLODLevels(int pcx, int pcz) {
+        int l0 = 0, l1 = 0, l2 = 0, l3 = 0;
+
+        for (var entry : world.getChunkMap().entrySet()) {
+            ChunkPos pos = entry.getKey();
+            Chunk chunk = entry.getValue();
+
+            int dx = pos.x() - pcx;
+            int dz = pos.z() - pcz;
+            int distSq = dx * dx + dz * dz;
+
+            LODLevel newLOD = lodConfig.getLevelForDistance(distSq);
+            LODLevel oldLOD = chunk.getCurrentLOD();
+
+            // Count stats
+            switch (newLOD) {
+                case LOD_0 -> l0++;
+                case LOD_1 -> l1++;
+                case LOD_2 -> l2++;
+                case LOD_3 -> l3++;
+            }
+
+            if (newLOD != oldLOD) {
+                chunk.setCurrentLOD(newLOD);
+                chunk.setLodMeshReady(false);
+
+                // If upgrading to LOD 0 and no full mesh, rebuild it
+                if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
+                    submitMeshJob(chunk, pos, false);
+                }
+                // If downgrading, generate LOD mesh
+                else if (newLOD.level() > 0 && chunk.getLodMesh(newLOD.level()) == null) {
+                    submitLODMeshJob(chunk, pos, newLOD);
+                } else {
+                    chunk.setLodMeshReady(true);
+                }
+            }
+        }
+
+        this.lod0Count = l0;
+        this.lod1Count = l1;
+        this.lod2Count = l2;
+        this.lod3Count = l3;
+        this.pendingUploads = uploadQueue.size() + lodUploadQueue.size();
+    }
+
+    /**
      * Request chunks around player, sorted by distance (closest first).
+     * Uses full LOD render distance.
      */
     private void requestChunks(int pcx, int pcz) {
+        int maxDist = lodConfig.getMaxRenderDistance();
+
         // Build list of needed chunks with distance
         List<int[]> needed = new ArrayList<>();
-        for (int dx = -RENDER_DISTANCE; dx <= RENDER_DISTANCE; dx++) {
-            for (int dz = -RENDER_DISTANCE; dz <= RENDER_DISTANCE; dz++) {
-                if (dx * dx + dz * dz > RENDER_DISTANCE * RENDER_DISTANCE) continue;
+        for (int dx = -maxDist; dx <= maxDist; dx++) {
+            for (int dz = -maxDist; dz <= maxDist; dz++) {
+                int distSq = dx * dx + dz * dz;
+                if (distSq > maxDist * maxDist) continue;
                 int cx = pcx + dx;
                 int cz = pcz + dz;
                 ChunkPos pos = new ChunkPos(cx, cz);
                 if (!world.isLoaded(cx, cz) && !pendingGen.containsKey(pos)) {
-                    needed.add(new int[]{cx, cz, dx * dx + dz * dz});
+                    needed.add(new int[]{cx, cz, distSq});
                 }
             }
         }
@@ -150,36 +230,50 @@ public class ChunkManager {
         // Sort by distance (closest first)
         needed.sort(Comparator.comparingInt(a -> a[2]));
 
-        // Enqueue up to MAX_GEN_PER_FRAME new generation tasks
-        int enqueued = 0;
-        for (int[] entry : needed) {
-            if (enqueued >= MAX_GEN_PER_FRAME) break;
+        // Enqueue generation tasks with per-frame budget
+        int closeEnqueued = 0;
+        int farEnqueued = 0;
+        int closeMax = LODConfig.MAX_CLOSE_GEN_PER_FRAME;
+        int farMax = LODConfig.MAX_FAR_GEN_PER_FRAME;
 
-            int cx = entry[0], cz = entry[1];
+        for (int[] entry : needed) {
+            int cx = entry[0], cz = entry[1], distSq = entry[2];
+            LODLevel level = lodConfig.getLevelForDistance(distSq);
+
+            boolean isClose = (level == LODLevel.LOD_0 || level == LODLevel.LOD_1);
+            if (isClose && closeEnqueued >= closeMax) continue;
+            if (!isClose && farEnqueued >= farMax) continue;
+
             ChunkPos pos = new ChunkPos(cx, cz);
 
             // Try loading from disk first (synchronous but fast)
             if (saveManager != null) {
                 Chunk loaded = saveManager.loadChunk(cx, cz);
                 if (loaded != null) {
+                    loaded.setCurrentLOD(level);
                     world.addChunk(pos, loaded);
-                    Lighting.computeInitialSkyLight(loaded, world);
-                    Lighting.computeInitialBlockLight(loaded, world);
-                    submitMeshJob(loaded, pos);
+                    if (level == LODLevel.LOD_0) {
+                        Lighting.computeInitialSkyLight(loaded, world);
+                        Lighting.computeInitialBlockLight(loaded, world);
+                        submitMeshJob(loaded, pos, true);
+                    } else {
+                        submitLODMeshJob(loaded, pos, level);
+                    }
+                    if (isClose) closeEnqueued++; else farEnqueued++;
                     continue;
                 }
             }
 
             // Submit async generation task
             Future<Chunk> future = genPool.submit(() -> {
-                // Each task creates its own pipeline to avoid thread contention
                 GenPipeline pipeline = GenPipeline.createDefault(seed);
                 Chunk chunk = new Chunk(pos);
                 pipeline.generate(chunk);
+                chunk.setCurrentLOD(level);
                 return chunk;
             });
             pendingGen.put(pos, future);
-            enqueued++;
+            if (isClose) closeEnqueued++; else farEnqueued++;
         }
     }
 
@@ -189,8 +283,9 @@ public class ChunkManager {
     private void processCompletedGenerations() {
         Iterator<Map.Entry<ChunkPos, Future<Chunk>>> it = pendingGen.entrySet().iterator();
         int processed = 0;
+        int maxProcess = LODConfig.MAX_CLOSE_GEN_PER_FRAME + LODConfig.MAX_FAR_GEN_PER_FRAME;
 
-        while (it.hasNext() && processed < MAX_GEN_PER_FRAME) {
+        while (it.hasNext() && processed < maxProcess) {
             Map.Entry<ChunkPos, Future<Chunk>> entry = it.next();
             Future<Chunk> future = entry.getValue();
 
@@ -201,10 +296,16 @@ public class ChunkManager {
                     if (chunk != null) {
                         ChunkPos pos = entry.getKey();
                         world.addChunk(pos, chunk);
-                        // Compute lighting on main thread (fast, and needs world access)
-                        Lighting.computeInitialSkyLight(chunk, world);
-                        Lighting.computeInitialBlockLight(chunk, world);
-                        submitMeshJob(chunk, pos);
+                        LODLevel level = chunk.getCurrentLOD();
+
+                        if (level == LODLevel.LOD_0) {
+                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialBlockLight(chunk, world);
+                            submitMeshJob(chunk, pos, true);
+                        } else {
+                            // For distant chunks, skip full lighting computation
+                            submitLODMeshJob(chunk, pos, level);
+                        }
                         processed++;
                     }
                 } catch (Exception e) {
@@ -215,18 +316,16 @@ public class ChunkManager {
     }
 
     /**
-     * Submit a mesh building job to the background mesh pool.
+     * Submit a full mesh building job to the background mesh pool.
      * Uses meshAllRaw (CPU-only, no GL calls) on background threads.
      */
-    private void submitMeshJob(Chunk chunk, ChunkPos pos) {
+    private void submitMeshJob(Chunk chunk, ChunkPos pos, boolean rebuildNeighbors) {
         if (meshingInProgress.contains(pos)) return;
         meshingInProgress.add(pos);
 
         meshPool.submit(() -> {
             try {
-                // Build mesh data on background thread (CPU work only — no GL calls)
                 RawMeshResult raw = mesher.meshAllRaw(chunk, world);
-                // Queue the raw data for GPU upload on main thread
                 uploadQueue.add(new MeshUpload(chunk, pos, raw));
             } catch (Exception e) {
                 System.err.println("Mesh building failed for " + pos + ": " + e.getMessage());
@@ -235,57 +334,107 @@ public class ChunkManager {
             }
         });
 
-        // Also rebuild neighbor meshes
-        int[][] neighbors = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-        for (int[] n : neighbors) {
-            ChunkPos nPos = new ChunkPos(pos.x() + n[0], pos.z() + n[1]);
-            Chunk neighbor = world.getChunk(nPos.x(), nPos.z());
-            if (neighbor != null && neighbor.getMesh() != null && !meshingInProgress.contains(nPos)) {
-                meshingInProgress.add(nPos);
-                meshPool.submit(() -> {
-                    try {
-                        RawMeshResult raw = mesher.meshAllRaw(neighbor, world);
-                        uploadQueue.add(new MeshUpload(neighbor, nPos, raw));
-                    } catch (Exception e) {
-                        // Neighbor mesh rebuild failure is non-critical
-                    } finally {
-                        meshingInProgress.remove(nPos);
-                    }
-                });
+        // Also rebuild neighbor meshes (only for close chunks)
+        if (rebuildNeighbors) {
+            int[][] neighbors = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+            for (int[] n : neighbors) {
+                ChunkPos nPos = new ChunkPos(pos.x() + n[0], pos.z() + n[1]);
+                Chunk neighbor = world.getChunk(nPos.x(), nPos.z());
+                if (neighbor != null && neighbor.getMesh() != null &&
+                    neighbor.getCurrentLOD() == LODLevel.LOD_0 &&
+                    !meshingInProgress.contains(nPos)) {
+                    meshingInProgress.add(nPos);
+                    meshPool.submit(() -> {
+                        try {
+                            RawMeshResult raw = mesher.meshAllRaw(neighbor, world);
+                            uploadQueue.add(new MeshUpload(neighbor, nPos, raw));
+                        } catch (Exception e) {
+                            // Neighbor mesh rebuild failure is non-critical
+                        } finally {
+                            meshingInProgress.remove(nPos);
+                        }
+                    });
+                }
             }
         }
     }
 
     /**
-     * Process mesh uploads on the main thread (GPU operations).
-     * Limited per frame to prevent stalls.
+     * Submit a LOD mesh building job.
+     */
+    private void submitLODMeshJob(Chunk chunk, ChunkPos pos, LODLevel level) {
+        if (lodMeshingInProgress.contains(pos)) return;
+        lodMeshingInProgress.add(pos);
+
+        meshPool.submit(() -> {
+            try {
+                RawMeshResult raw = lodMesher.meshForLOD(chunk, world, level);
+                if (raw != null) {
+                    lodUploadQueue.add(new LODMeshUpload(chunk, pos, raw, level));
+                }
+            } catch (Exception e) {
+                System.err.println("LOD mesh building failed for " + pos + " (LOD " + level + "): " + e.getMessage());
+            } finally {
+                lodMeshingInProgress.remove(pos);
+            }
+        });
+    }
+
+    /**
+     * Process full mesh uploads on the main thread (GPU operations).
      */
     private void processMeshUploads() {
         int uploaded = 0;
         MeshUpload upload;
-        while ((upload = uploadQueue.poll()) != null && uploaded < MAX_MESH_UPLOADS_PER_FRAME) {
+        while ((upload = uploadQueue.poll()) != null && uploaded < LODConfig.MAX_MESH_UPLOADS_PER_FRAME) {
             Chunk chunk = upload.chunk;
             RawMeshResult raw = upload.rawResult;
 
-            // Upload to GPU on the GL thread
             MeshResult result = raw.upload();
             chunk.setMesh(result.opaqueMesh());
             chunk.setTransparentMesh(result.transparentMesh());
             chunk.setDirty(false);
+            if (chunk.getCurrentLOD() == LODLevel.LOD_0) {
+                chunk.setLodMeshReady(true);
+            }
             uploaded++;
         }
     }
 
     /**
-     * Unload chunks beyond UNLOAD_DISTANCE from player.
+     * Process LOD mesh uploads on the main thread.
+     */
+    private void processLODMeshUploads() {
+        int uploaded = 0;
+        LODMeshUpload upload;
+        while ((upload = lodUploadQueue.poll()) != null && uploaded < LODConfig.MAX_LOD_UPLOADS_PER_FRAME) {
+            Chunk chunk = upload.chunk;
+            RawMeshResult raw = upload.rawResult;
+            int level = upload.level.level();
+
+            // Upload only the opaque mesh for LOD levels
+            var opaqueMesh = raw.opaqueData() != null ? raw.opaqueData().toChunkMesh() : null;
+            chunk.setLodMesh(level, opaqueMesh);
+            if (chunk.getCurrentLOD() == upload.level) {
+                chunk.setLodMeshReady(true);
+            }
+            uploaded++;
+        }
+    }
+
+    /**
+     * Unload chunks beyond max render distance from player.
      */
     private void unloadDistantChunks(int pcx, int pcz) {
+        int unloadDist = lodConfig.getUnloadDistance();
+        int unloadDistSq = unloadDist * unloadDist;
+
         List<ChunkPos> toRemove = new ArrayList<>();
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
             int dx = pos.x() - pcx;
             int dz = pos.z() - pcz;
-            if (dx * dx + dz * dz > UNLOAD_DISTANCE * UNLOAD_DISTANCE) {
+            if (dx * dx + dz * dz > unloadDistSq) {
                 toRemove.add(pos);
             }
         }
@@ -370,6 +519,14 @@ public class ChunkManager {
         return world;
     }
 
+    // ---- LOD stats for debug overlay ----
+    public int getLod0Count() { return lod0Count; }
+    public int getLod1Count() { return lod1Count; }
+    public int getLod2Count() { return lod2Count; }
+    public int getLod3Count() { return lod3Count; }
+    public int getPendingUploads() { return pendingUploads; }
+    public int getTotalChunks() { return world.getChunkMap().size(); }
+
     public void shutdown() {
         if (genPool != null) {
             genPool.shutdownNow();
@@ -383,15 +540,6 @@ public class ChunkManager {
 
     // ---- Internal data classes ----
 
-    private static class MeshJob {
-        final Chunk chunk;
-        final ChunkPos pos;
-        MeshJob(Chunk chunk, ChunkPos pos) {
-            this.chunk = chunk;
-            this.pos = pos;
-        }
-    }
-
     private static class MeshUpload {
         final Chunk chunk;
         final ChunkPos pos;
@@ -400,6 +548,19 @@ public class ChunkManager {
             this.chunk = chunk;
             this.pos = pos;
             this.rawResult = rawResult;
+        }
+    }
+
+    private static class LODMeshUpload {
+        final Chunk chunk;
+        final ChunkPos pos;
+        final RawMeshResult rawResult;
+        final LODLevel level;
+        LODMeshUpload(Chunk chunk, ChunkPos pos, RawMeshResult rawResult, LODLevel level) {
+            this.chunk = chunk;
+            this.pos = pos;
+            this.rawResult = rawResult;
+            this.level = level;
         }
     }
 }

@@ -1,10 +1,13 @@
 package com.voxelgame.world;
 
+import com.voxelgame.world.lod.LODLevel;
 import com.voxelgame.world.mesh.ChunkMesh;
 
 /**
  * A 16×128×16 column of blocks with light data.
  * Each position stores a block ID and packed light (high nibble = sky, low nibble = block).
+ *
+ * Supports multi-tier LOD meshes: each LOD level can have its own mesh.
  */
 public class Chunk {
 
@@ -16,6 +19,14 @@ public class Chunk {
     private boolean lightDirty = true;
     private ChunkMesh mesh;
     private ChunkMesh transparentMesh;
+
+    // ---- LOD mesh storage ----
+    /** LOD meshes indexed by LOD level (0-3). LOD 0 uses the main mesh/transparentMesh. */
+    private final ChunkMesh[] lodMeshes = new ChunkMesh[4];
+    /** Current assigned LOD level for rendering. */
+    private volatile LODLevel currentLOD = LODLevel.LOD_0;
+    /** Whether this chunk has a valid LOD mesh for its current level. */
+    private volatile boolean lodMeshReady = false;
 
     /**
      * Whether this chunk has been modified by the player (block placed/removed)
@@ -165,6 +176,60 @@ public class Chunk {
         this.transparentMesh = mesh;
     }
 
+    // ---- LOD mesh management ----
+
+    /** Get the current LOD level assigned to this chunk. */
+    public LODLevel getCurrentLOD() { return currentLOD; }
+
+    /** Set the LOD level for this chunk. */
+    public void setCurrentLOD(LODLevel lod) { this.currentLOD = lod; }
+
+    /** Whether this chunk has a ready LOD mesh for its current level. */
+    public boolean isLodMeshReady() { return lodMeshReady; }
+    public void setLodMeshReady(boolean ready) { this.lodMeshReady = ready; }
+
+    /** Get the LOD mesh for a specific level. Returns null if not generated. */
+    public ChunkMesh getLodMesh(int level) {
+        if (level < 0 || level >= lodMeshes.length) return null;
+        return lodMeshes[level];
+    }
+
+    /** Set the LOD mesh for a specific level. Disposes old mesh if present. */
+    public void setLodMesh(int level, ChunkMesh mesh) {
+        if (level < 0 || level >= lodMeshes.length) return;
+        if (lodMeshes[level] != null) {
+            lodMeshes[level].dispose();
+        }
+        lodMeshes[level] = mesh;
+    }
+
+    /**
+     * Get the best available mesh for rendering based on current LOD.
+     * Falls back to lower-detail LOD meshes if requested LOD isn't ready.
+     */
+    public ChunkMesh getRenderMesh() {
+        int level = currentLOD.level();
+        // LOD 0 uses the main opaque mesh
+        if (level == 0) return mesh;
+        // Check LOD meshes, falling back to higher LOD number (lower detail)
+        for (int i = level; i <= 3; i++) {
+            if (lodMeshes[i] != null && !lodMeshes[i].isEmpty()) {
+                return lodMeshes[i];
+            }
+        }
+        // Fallback to full mesh if no LOD mesh available yet
+        return mesh;
+    }
+
+    /**
+     * Get transparent mesh only for LOD 0 (close chunks).
+     * LOD 1+ don't render transparent geometry.
+     */
+    public ChunkMesh getRenderTransparentMesh() {
+        if (currentLOD == LODLevel.LOD_0) return transparentMesh;
+        return null;
+    }
+
     public void dispose() {
         if (mesh != null) {
             mesh.dispose();
@@ -173,6 +238,12 @@ public class Chunk {
         if (transparentMesh != null) {
             transparentMesh.dispose();
             transparentMesh = null;
+        }
+        for (int i = 0; i < lodMeshes.length; i++) {
+            if (lodMeshes[i] != null) {
+                lodMeshes[i].dispose();
+                lodMeshes[i] = null;
+            }
         }
     }
 

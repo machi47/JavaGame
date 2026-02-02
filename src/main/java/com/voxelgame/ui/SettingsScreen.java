@@ -4,7 +4,8 @@ import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * Settings screen with sliders for render distance, FOV, and mouse sensitivity.
+ * Settings screen with sliders for render distance, FOV, mouse sensitivity,
+ * LOD threshold, and max LOD render distance.
  * Accessible from main menu or pause menu.
  */
 public class SettingsScreen extends Screen {
@@ -19,15 +20,19 @@ public class SettingsScreen extends Screen {
         void onRenderDistanceChanged(int chunks);
         void onFovChanged(float fov);
         void onMouseSensitivityChanged(float sensitivity);
+        void onLodThresholdChanged(int chunks);
+        void onMaxLodDistanceChanged(int chunks);
     }
 
     private SettingsCallback callback;
     private SettingsChangeListener changeListener;
 
     // Current settings values
-    private int renderDistance = 8;       // chunks (4-16)
-    private float fov = 70.0f;           // degrees (50-120)
+    private int renderDistance = 8;         // chunks (4-16) — LOD 0 radius
+    private float fov = 70.0f;             // degrees (50-120)
     private float mouseSensitivity = 0.1f; // (0.01-0.5)
+    private int lodThreshold = 8;          // where LOD starts (4-16)
+    private int maxLodDistance = 128;       // max render distance (16-256)
 
     // Slider config
     private static final int MIN_RENDER_DIST = 4;
@@ -36,14 +41,20 @@ public class SettingsScreen extends Screen {
     private static final float MAX_FOV = 120.0f;
     private static final float MIN_SENS = 0.01f;
     private static final float MAX_SENS = 0.50f;
+    private static final int MIN_LOD_THRESHOLD = 4;
+    private static final int MAX_LOD_THRESHOLD = 16;
+    private static final int MIN_LOD_DIST = 16;
+    private static final int MAX_LOD_DIST = 256;
 
     private static final float SLIDER_WIDTH = 360.0f;
     private static final float SLIDER_HEIGHT = 8.0f;
     private static final float SLIDER_KNOB_SIZE = 16.0f;
 
     // Drag tracking
-    private int draggingSlider = -1; // 0=RD, 1=FOV, 2=Sens
-    private int hoveredButton = -1;  // 0-2 = sliders, 3 = Done
+    private int draggingSlider = -1; // 0=RD, 1=FOV, 2=Sens, 3=LOD Threshold, 4=Max LOD Dist
+    private int hoveredButton = -1;  // 0-4 = sliders, 5 = Done
+
+    private static final int SLIDER_COUNT = 5;
 
     public void setCallback(SettingsCallback callback) {
         this.callback = callback;
@@ -64,6 +75,12 @@ public class SettingsScreen extends Screen {
     public float getMouseSensitivity() { return mouseSensitivity; }
     public void setMouseSensitivity(float s) { this.mouseSensitivity = Math.max(MIN_SENS, Math.min(MAX_SENS, s)); }
 
+    public int getLodThreshold() { return lodThreshold; }
+    public void setLodThreshold(int t) { this.lodThreshold = Math.max(MIN_LOD_THRESHOLD, Math.min(MAX_LOD_THRESHOLD, t)); }
+
+    public int getMaxLodDistance() { return maxLodDistance; }
+    public void setMaxLodDistance(int d) { this.maxLodDistance = Math.max(MIN_LOD_DIST, Math.min(MAX_LOD_DIST, d)); }
+
     @Override
     public void render(int screenW, int screenH, float dt) {
         this.screenW = screenW;
@@ -77,26 +94,40 @@ public class SettingsScreen extends Screen {
         endDraw();
 
         // Title
-        drawCenteredTextWithShadow("Settings", screenH * 0.08f, 3.5f,
+        drawCenteredTextWithShadow("Settings", screenH * 0.05f, 3.5f,
                                     0.8f, 0.9f, 1.0f, 1.0f);
 
         // Layout
         float formX = (screenW - SLIDER_WIDTH) / 2.0f;
-        float formY = screenH * 0.22f;
-        float rowH = 80.0f;
+        float formY = screenH * 0.15f;
+        float rowH = 65.0f;
 
-        // ---- Render Distance Slider ----
-        renderSlider("Render Distance: " + renderDistance + " chunks",
+        // ---- Render Distance Slider (LOD 0 radius) ----
+        renderSlider("Full Detail Distance: " + renderDistance + " chunks",
                      formX, formY, SLIDER_WIDTH,
                      (renderDistance - MIN_RENDER_DIST) / (float)(MAX_RENDER_DIST - MIN_RENDER_DIST),
                      hoveredButton == 0 || draggingSlider == 0);
+        formY += rowH;
+
+        // ---- LOD Threshold Slider ----
+        renderSlider("LOD Threshold: " + lodThreshold + " chunks",
+                     formX, formY, SLIDER_WIDTH,
+                     (lodThreshold - MIN_LOD_THRESHOLD) / (float)(MAX_LOD_THRESHOLD - MIN_LOD_THRESHOLD),
+                     hoveredButton == 1 || draggingSlider == 1);
+        formY += rowH;
+
+        // ---- Max LOD Distance Slider ----
+        renderSlider("Max Render Distance: " + maxLodDistance + " chunks",
+                     formX, formY, SLIDER_WIDTH,
+                     (maxLodDistance - MIN_LOD_DIST) / (float)(MAX_LOD_DIST - MIN_LOD_DIST),
+                     hoveredButton == 2 || draggingSlider == 2);
         formY += rowH;
 
         // ---- FOV Slider ----
         renderSlider("FOV: " + (int) fov + "\u00B0",
                      formX, formY, SLIDER_WIDTH,
                      (fov - MIN_FOV) / (MAX_FOV - MIN_FOV),
-                     hoveredButton == 1 || draggingSlider == 1);
+                     hoveredButton == 3 || draggingSlider == 3);
         formY += rowH;
 
         // ---- Mouse Sensitivity Slider ----
@@ -104,14 +135,14 @@ public class SettingsScreen extends Screen {
         renderSlider(sensStr,
                      formX, formY, SLIDER_WIDTH,
                      (mouseSensitivity - MIN_SENS) / (MAX_SENS - MIN_SENS),
-                     hoveredButton == 2 || draggingSlider == 2);
+                     hoveredButton == 4 || draggingSlider == 4);
         formY += rowH;
 
         // ---- Done button ----
         beginDraw(screenW, screenH);
         float btnX = (screenW - BUTTON_WIDTH) / 2.0f;
-        float btnY = screenH - (screenH * 0.85f) - BUTTON_HEIGHT;
-        drawButton("Done", btnX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT, hoveredButton == 3, true);
+        float btnY = screenH - (screenH * 0.90f) - BUTTON_HEIGHT;
+        drawButton("Done", btnX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT, hoveredButton == SLIDER_COUNT, true);
         endDraw();
     }
 
@@ -156,7 +187,7 @@ public class SettingsScreen extends Screen {
     // ---- Slider Y positions (centralized for hit testing) ----
 
     private float sliderTrackY(int index) {
-        float formY = screenH * 0.22f + index * 80.0f + 28;
+        float formY = screenH * 0.15f + index * 65.0f + 28;
         return screenH - formY - SLIDER_HEIGHT;
     }
 
@@ -175,7 +206,7 @@ public class SettingsScreen extends Screen {
         float sx = sliderTrackX();
 
         // Check slider clicks (start drag)
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < SLIDER_COUNT; i++) {
             float trackY = sliderTrackY(i);
             float hitY = trackY - SLIDER_KNOB_SIZE;
             float hitH = SLIDER_HEIGHT + SLIDER_KNOB_SIZE * 2;
@@ -188,7 +219,7 @@ public class SettingsScreen extends Screen {
 
         // Done button
         float btnX = (screenW - BUTTON_WIDTH) / 2.0f;
-        float btnY = screenH - (screenH * 0.85f) - BUTTON_HEIGHT;
+        float btnY = screenH - (screenH * 0.90f) - BUTTON_HEIGHT;
         if (isInside(clickX, clickY, btnX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
             if (callback != null) callback.onBack();
         }
@@ -225,10 +256,18 @@ public class SettingsScreen extends Screen {
                 if (changeListener != null) changeListener.onRenderDistanceChanged(renderDistance);
             }
             case 1 -> {
+                lodThreshold = Math.round(MIN_LOD_THRESHOLD + t * (MAX_LOD_THRESHOLD - MIN_LOD_THRESHOLD));
+                if (changeListener != null) changeListener.onLodThresholdChanged(lodThreshold);
+            }
+            case 2 -> {
+                maxLodDistance = Math.round(MIN_LOD_DIST + t * (MAX_LOD_DIST - MIN_LOD_DIST));
+                if (changeListener != null) changeListener.onMaxLodDistanceChanged(maxLodDistance);
+            }
+            case 3 -> {
                 fov = MIN_FOV + t * (MAX_FOV - MIN_FOV);
                 if (changeListener != null) changeListener.onFovChanged(fov);
             }
-            case 2 -> {
+            case 4 -> {
                 mouseSensitivity = MIN_SENS + t * (MAX_SENS - MIN_SENS);
                 if (changeListener != null) changeListener.onMouseSensitivityChanged(mouseSensitivity);
             }
@@ -249,7 +288,7 @@ public class SettingsScreen extends Screen {
         float sx = sliderTrackX();
 
         // Sliders
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < SLIDER_COUNT; i++) {
             float trackY = sliderTrackY(i);
             float hitY = trackY - SLIDER_KNOB_SIZE;
             float hitH = SLIDER_HEIGHT + SLIDER_KNOB_SIZE * 2;
@@ -261,9 +300,9 @@ public class SettingsScreen extends Screen {
 
         // Done button
         float btnX = (screenW - BUTTON_WIDTH) / 2.0f;
-        float btnY = screenH - (screenH * 0.85f) - BUTTON_HEIGHT;
+        float btnY = screenH - (screenH * 0.90f) - BUTTON_HEIGHT;
         if (isInside(clickX, clickY, btnX, btnY, BUTTON_WIDTH, BUTTON_HEIGHT)) {
-            hoveredButton = 3;
+            hoveredButton = SLIDER_COUNT;
         }
     }
 

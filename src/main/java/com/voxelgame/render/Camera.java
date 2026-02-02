@@ -22,7 +22,7 @@ public class Camera {
 
     private float fov = 70.0f;
     private float nearPlane = 0.1f;
-    private float farPlane = 500.0f;
+    private float farPlane = 2200.0f; // Extended for LOD (128 chunks * 16 + margin)
 
     public void updateVectors() {
         float yawRad = (float) Math.toRadians(yaw);
@@ -73,6 +73,8 @@ public class Camera {
     public void setYaw(float yaw) { this.yaw = yaw; updateVectors(); }
     public void setPitch(float pitch) { this.pitch = pitch; updateVectors(); }
     public float getFov() { return fov; }
+    public void setFov(float fov) { this.fov = fov; }
     public float getNearPlane() { return nearPlane; }
     public float getFarPlane() { return farPlane; }
+    public void setFarPlane(float farPlane) { this.farPlane = farPlane; }
 }

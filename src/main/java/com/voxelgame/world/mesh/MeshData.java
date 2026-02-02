@@ -6,6 +6,9 @@ package com.voxelgame.world.mesh;
  */
 public record MeshData(float[] vertices, int[] indices) {
 
+    /** Shared empty mesh data instance. */
+    public static final MeshData EMPTY = new MeshData(new float[0], new int[0]);
+
     /** Check if this mesh data is empty (no geometry). */
     public boolean isEmpty() {
         return indices == null || indices.length == 0;
