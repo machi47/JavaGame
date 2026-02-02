@@ -106,6 +106,35 @@ public final class RecipeRegistry {
         // Redstone wire placement: redstone item placed directly becomes wire
         // (handled in GameLoop, not a crafting recipe — redstone item IS the wire material)
 
+
+        // ---- Armor recipes ----
+        int LEATHER = Blocks.LEATHER.id();
+        int DIAMOND_ITEM = Blocks.DIAMOND.id();
+
+        // Leather armor
+        recipes.add(new Recipe(2, 2, new int[]{ LEATHER, LEATHER, LEATHER, 0 }, Blocks.LEATHER_HELMET.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ LEATHER, 0, LEATHER, LEATHER }, Blocks.LEATHER_CHESTPLATE.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ LEATHER, LEATHER, LEATHER, LEATHER }, Blocks.LEATHER_LEGGINGS.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ 0, 0, LEATHER, LEATHER }, Blocks.LEATHER_BOOTS.id(), 1));
+
+        // Iron armor
+        recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, IRON_INGOT, IRON_INGOT, 0 }, Blocks.IRON_HELMET.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, 0, IRON_INGOT, IRON_INGOT }, Blocks.IRON_CHESTPLATE.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, IRON_INGOT, IRON_INGOT, IRON_INGOT }, Blocks.IRON_LEGGINGS.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ 0, 0, IRON_INGOT, IRON_INGOT }, Blocks.IRON_BOOTS.id(), 1));
+
+        // Diamond armor
+        recipes.add(new Recipe(2, 2, new int[]{ DIAMOND_ITEM, DIAMOND_ITEM, DIAMOND_ITEM, 0 }, Blocks.DIAMOND_HELMET.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ DIAMOND_ITEM, 0, DIAMOND_ITEM, DIAMOND_ITEM }, Blocks.DIAMOND_CHESTPLATE.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ DIAMOND_ITEM, DIAMOND_ITEM, DIAMOND_ITEM, DIAMOND_ITEM }, Blocks.DIAMOND_LEGGINGS.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ 0, 0, DIAMOND_ITEM, DIAMOND_ITEM }, Blocks.DIAMOND_BOOTS.id(), 1));
+
+        // Gold armor
+        recipes.add(new Recipe(2, 2, new int[]{ GOLD_INGOT, GOLD_INGOT, GOLD_INGOT, 0 }, Blocks.GOLD_HELMET.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ GOLD_INGOT, 0, GOLD_INGOT, GOLD_INGOT }, Blocks.GOLD_CHESTPLATE.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ GOLD_INGOT, GOLD_INGOT, GOLD_INGOT, GOLD_INGOT }, Blocks.GOLD_LEGGINGS.id(), 1));
+        recipes.add(new Recipe(2, 2, new int[]{ 0, 0, GOLD_INGOT, GOLD_INGOT }, Blocks.GOLD_BOOTS.id(), 1));
+
         System.out.println("[RecipeRegistry] Registered " + recipes.size() + " recipes");
     }
 }

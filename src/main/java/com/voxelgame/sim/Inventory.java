@@ -13,11 +13,6 @@ public class Inventory {
     /** Alias for TOTAL_SIZE (used by DebugOverlay). */
     public static final int TOTAL_SLOTS = TOTAL_SIZE;
     public static final int MAX_STACK = 64;
-    public static final int ARMOR_SLOTS = 4;
-    public static final int ARMOR_HELMET = 0;
-    public static final int ARMOR_CHESTPLATE = 1;
-    public static final int ARMOR_LEGGINGS = 2;
-    public static final int ARMOR_BOOTS = 3;
 
     /**
      * An item stack: block ID + count + optional durability (for tools).
@@ -100,25 +95,6 @@ public class Inventory {
     }
 
     private final ItemStack[] slots = new ItemStack[TOTAL_SIZE];
-    private final ItemStack[] armorSlots = new ItemStack[ARMOR_SLOTS];
-
-    public ItemStack getArmorSlot(int index) { return (index >= 0 && index < ARMOR_SLOTS) ? armorSlots[index] : null; }
-    public void setArmorSlot(int index, ItemStack stack) { if (index >= 0 && index < ARMOR_SLOTS) armorSlots[index] = stack; }
-    public ItemStack[] getArmorSlots() { return armorSlots; }
-    public ItemStack equipArmor(ItemStack s) {
-        if (s == null || s.isEmpty()) return null;
-        ArmorItem.Slot slot = ArmorItem.getSlot(s.getBlockId());
-        if (slot == null) return null;
-        ItemStack prev = armorSlots[slot.index]; armorSlots[slot.index] = s; return prev;
-    }
-    public float getTotalArmorDefense() {
-        float t = 0; for (ItemStack s : armorSlots) if (s != null && !s.isEmpty()) t += ArmorItem.getDefense(s.getBlockId()); return t;
-    }
-    public void damageArmor() {
-        for (int i = 0; i < ARMOR_SLOTS; i++)
-            if (armorSlots[i] != null && !armorSlots[i].isEmpty() && armorSlots[i].hasDurability())
-                if (armorSlots[i].damageTool(1)) armorSlots[i] = null;
-    }
 
     /**
      * Add an item to the inventory. Tries hotbar first, then storage.
@@ -127,7 +103,7 @@ public class Inventory {
     public int addItem(int blockId, int count) {
         if (blockId <= 0 || count <= 0) return 0;
 
-        boolean isTool = ToolItem.isTool(blockId) || ArmorItem.isArmor(blockId);
+        boolean isTool = ToolItem.isTool(blockId);
         int remaining = count;
 
         if (!isTool) {
@@ -142,7 +118,7 @@ public class Inventory {
         for (int i = 0; i < TOTAL_SIZE && remaining > 0; i++) {
             if (slots[i] == null || slots[i].isEmpty()) {
                 if (isTool) {
-                    int maxDur = ToolItem.isTool(blockId) ? ToolItem.getMaxDurability(blockId) : ArmorItem.getMaxDurability(blockId);
+                    int maxDur = ToolItem.getMaxDurability(blockId);
                     slots[i] = new ItemStack(blockId, maxDur, maxDur);
                     remaining--;
                 } else {
@@ -267,8 +243,9 @@ public class Inventory {
      * Clear all slots.
      */
     public void clear() {
-        for (int i = 0; i < TOTAL_SIZE; i++) slots[i] = null;
-        for (int i = 0; i < ARMOR_SLOTS; i++) armorSlots[i] = null;
+        for (int i = 0; i < TOTAL_SIZE; i++) {
+            slots[i] = null;
+        }
     }
 
     /**
@@ -338,17 +315,6 @@ public class Inventory {
                   .append(slots[i].getMaxDurability());
             }
         }
-        // Serialize armor slots
-        for (int i = 0; i < ARMOR_SLOTS; i++) {
-            if (armorSlots[i] != null && !armorSlots[i].isEmpty()) {
-                if (sb.length() > 0) sb.append(";");
-                sb.append("A").append(i).append(":")
-                  .append(armorSlots[i].getBlockId()).append(":")
-                  .append(armorSlots[i].getCount()).append(":")
-                  .append(armorSlots[i].getDurability()).append(":")
-                  .append(armorSlots[i].getMaxDurability());
-            }
-        }
         return sb.toString();
     }
 
@@ -357,8 +323,10 @@ public class Inventory {
      * Clears all slots first, then populates from the string.
      */
     public void deserialize(String data) {
-        for (int i = 0; i < TOTAL_SIZE; i++) slots[i] = null;
-        for (int i = 0; i < ARMOR_SLOTS; i++) armorSlots[i] = null;
+        // Clear all slots
+        for (int i = 0; i < TOTAL_SIZE; i++) {
+            slots[i] = null;
+        }
 
         if (data == null || data.isEmpty()) return;
 
@@ -367,16 +335,18 @@ public class Inventory {
             try {
                 String[] parts = entry.split(":");
                 if (parts.length < 3) continue;
-                String slotStr = parts[0]; boolean isArmorSlot = slotStr.startsWith("A"); int slot = Integer.parseInt(isArmorSlot ? slotStr.substring(1) : slotStr);
+                int slot = Integer.parseInt(parts[0]);
                 int blockId = Integer.parseInt(parts[1]);
                 int count = Integer.parseInt(parts[2]);
                 int durability = parts.length > 3 ? Integer.parseInt(parts[3]) : -1;
                 int maxDurability = parts.length > 4 ? Integer.parseInt(parts[4]) : -1;
 
-                if (blockId > 0 && count > 0) {
-                    ItemStack stack = (durability >= 0 && maxDurability > 0) ? new ItemStack(blockId, durability, maxDurability) : new ItemStack(blockId, count);
-                    if (isArmorSlot && slot >= 0 && slot < ARMOR_SLOTS) armorSlots[slot] = stack;
-                    else if (!isArmorSlot && slot >= 0 && slot < TOTAL_SIZE) slots[slot] = stack;
+                if (slot >= 0 && slot < TOTAL_SIZE && blockId > 0 && count > 0) {
+                    if (durability >= 0 && maxDurability > 0) {
+                        slots[slot] = new ItemStack(blockId, durability, maxDurability);
+                    } else {
+                        slots[slot] = new ItemStack(blockId, count);
+                    }
                 }
             } catch (NumberFormatException e) {
                 // Skip corrupted entries

@@ -106,6 +106,7 @@ public final class ToolItem {
     public static String getDisplayName(int blockId) {
         ToolItem tool = get(blockId);
         if (tool != null) return tool.displayName;
+        if (ArmorItem.isArmor(blockId)) return ArmorItem.getDisplayName(blockId);
         return Blocks.get(blockId).name();
     }
 }

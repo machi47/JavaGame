@@ -224,11 +224,40 @@ public final class Blocks {
     public static final Block JACK_O_LANTERN   = new Block(97, "jack_o_lantern",    true,  false, new int[]{70, 70, 71, 73, 71, 71}, 1.0f, -1);
 
 
+
+    // ---- Stub blocks (from other agent refs) ----
+    public static final Block LEATHER_HELMET       = new Block(98, "leather_helmet", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block LEATHER_CHESTPLATE   = new Block(99, "leather_chestplate", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block LEATHER_LEGGINGS     = new Block(100, "leather_leggings", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block LEATHER_BOOTS        = new Block(101, "leather_boots", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block IRON_HELMET          = new Block(102, "iron_helmet", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block IRON_CHESTPLATE      = new Block(103, "iron_chestplate", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block IRON_LEGGINGS        = new Block(104, "iron_leggings", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block IRON_BOOTS           = new Block(105, "iron_boots", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block DIAMOND_HELMET       = new Block(106, "diamond_helmet", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block DIAMOND_CHESTPLATE   = new Block(107, "diamond_chestplate", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block DIAMOND_LEGGINGS     = new Block(108, "diamond_leggings", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block DIAMOND_BOOTS        = new Block(109, "diamond_boots", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block GOLD_HELMET          = new Block(110, "gold_helmet", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block GOLD_CHESTPLATE      = new Block(111, "gold_chestplate", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block GOLD_LEGGINGS        = new Block(112, "gold_leggings", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block GOLD_BOOTS           = new Block(113, "gold_boots", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block FARMLAND             = new Block(114, "farmland", true, false, new int[]{0}, 0.0f, -1);
+    public static final Block SUGAR_CANE           = new Block(115, "sugar_cane", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_0         = new Block(116, "wheat_crop_0", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_1         = new Block(117, "wheat_crop_1", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_2         = new Block(118, "wheat_crop_2", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_3         = new Block(119, "wheat_crop_3", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_4         = new Block(120, "wheat_crop_4", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_5         = new Block(121, "wheat_crop_5", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_6         = new Block(122, "wheat_crop_6", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block WHEAT_CROP_7         = new Block(123, "wheat_crop_7", false, true, new int[]{0}, 0.0f, -1);
+
     /** All blocks indexed by ID for fast lookup. */
     private static final Block[] REGISTRY;
 
     static {
-        REGISTRY = new Block[98]; // IDs 0-97
+        REGISTRY = new Block[124]; // IDs 0-97
         REGISTRY[0]  = AIR;          REGISTRY[1]  = STONE;         REGISTRY[2]  = COBBLESTONE;
         REGISTRY[3]  = DIRT;         REGISTRY[4]  = GRASS;         REGISTRY[5]  = SAND;
         REGISTRY[6]  = GRAVEL;       REGISTRY[7]  = LOG;           REGISTRY[8]  = LEAVES;
@@ -277,6 +306,32 @@ public final class Blocks {
     public static Block get(int id) {
         if (id < 0 || id >= REGISTRY.length) return AIR;
         return REGISTRY[id];
+        REGISTRY[98] = LEATHER_HELMET;
+        REGISTRY[99] = LEATHER_CHESTPLATE;
+        REGISTRY[100] = LEATHER_LEGGINGS;
+        REGISTRY[101] = LEATHER_BOOTS;
+        REGISTRY[102] = IRON_HELMET;
+        REGISTRY[103] = IRON_CHESTPLATE;
+        REGISTRY[104] = IRON_LEGGINGS;
+        REGISTRY[105] = IRON_BOOTS;
+        REGISTRY[106] = DIAMOND_HELMET;
+        REGISTRY[107] = DIAMOND_CHESTPLATE;
+        REGISTRY[108] = DIAMOND_LEGGINGS;
+        REGISTRY[109] = DIAMOND_BOOTS;
+        REGISTRY[110] = GOLD_HELMET;
+        REGISTRY[111] = GOLD_CHESTPLATE;
+        REGISTRY[112] = GOLD_LEGGINGS;
+        REGISTRY[113] = GOLD_BOOTS;
+        REGISTRY[114] = FARMLAND;
+        REGISTRY[115] = SUGAR_CANE;
+        REGISTRY[116] = WHEAT_CROP_0;
+        REGISTRY[117] = WHEAT_CROP_1;
+        REGISTRY[118] = WHEAT_CROP_2;
+        REGISTRY[119] = WHEAT_CROP_3;
+        REGISTRY[120] = WHEAT_CROP_4;
+        REGISTRY[121] = WHEAT_CROP_5;
+        REGISTRY[122] = WHEAT_CROP_6;
+        REGISTRY[123] = WHEAT_CROP_7;
     }
 
     /** Total number of registered block types. */
@@ -492,5 +547,18 @@ public final class Blocks {
     /** Check if a block is ice (slippery). */
     public static boolean isIce(int blockId) {
         return blockId == ICE.id();
+    }
+
+    public static boolean isWheatCrop(int blockId) {
+        return blockId >= WHEAT_CROP_0.id() && blockId <= WHEAT_CROP_7.id();
+    }
+    public static int getWheatStage(int blockId) {
+        if (!isWheatCrop(blockId)) return -1;
+        return blockId - WHEAT_CROP_0.id();
+    }
+    public static int wheatCropId(int stage) {
+        if (stage < 0) stage = 0;
+        if (stage > 7) stage = 7;
+        return WHEAT_CROP_0.id() + stage;
     }
 }

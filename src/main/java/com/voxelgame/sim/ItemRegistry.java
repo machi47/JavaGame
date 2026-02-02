@@ -118,6 +118,26 @@ public final class ItemRegistry {
         register(Blocks.BOAT_ITEM.id(),     "Boat",            Category.VEHICLES);
         register(Blocks.MINECART_ITEM.id(), "Minecart",        Category.VEHICLES);
 
+
+        // ---- Armor ----
+        register(Blocks.LEATHER.id(),            "Leather",              Category.MATERIALS);
+        register(Blocks.LEATHER_HELMET.id(),     "Leather Helmet",      Category.TOOLS);
+        register(Blocks.LEATHER_CHESTPLATE.id(), "Leather Chestplate",  Category.TOOLS);
+        register(Blocks.LEATHER_LEGGINGS.id(),   "Leather Leggings",    Category.TOOLS);
+        register(Blocks.LEATHER_BOOTS.id(),      "Leather Boots",       Category.TOOLS);
+        register(Blocks.IRON_HELMET.id(),        "Iron Helmet",         Category.TOOLS);
+        register(Blocks.IRON_CHESTPLATE.id(),    "Iron Chestplate",     Category.TOOLS);
+        register(Blocks.IRON_LEGGINGS.id(),      "Iron Leggings",       Category.TOOLS);
+        register(Blocks.IRON_BOOTS.id(),         "Iron Boots",          Category.TOOLS);
+        register(Blocks.DIAMOND_HELMET.id(),     "Diamond Helmet",      Category.TOOLS);
+        register(Blocks.DIAMOND_CHESTPLATE.id(), "Diamond Chestplate",  Category.TOOLS);
+        register(Blocks.DIAMOND_LEGGINGS.id(),   "Diamond Leggings",    Category.TOOLS);
+        register(Blocks.DIAMOND_BOOTS.id(),      "Diamond Boots",       Category.TOOLS);
+        register(Blocks.GOLD_HELMET.id(),        "Gold Helmet",         Category.TOOLS);
+        register(Blocks.GOLD_CHESTPLATE.id(),    "Gold Chestplate",     Category.TOOLS);
+        register(Blocks.GOLD_LEGGINGS.id(),      "Gold Leggings",       Category.TOOLS);
+        register(Blocks.GOLD_BOOTS.id(),         "Gold Boots",          Category.TOOLS);
+
         // Build the ALL category (everything)
         BY_CATEGORY.get(Category.ALL).addAll(ALL_ENTRIES);
     }
