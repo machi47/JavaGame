@@ -117,6 +117,19 @@ public final class RecipeRegistry {
         recipes.add(new Recipe(2, 2, new int[]{ LEATHER, LEATHER, LEATHER, LEATHER }, Blocks.LEATHER_LEGGINGS.id(), 1));
         recipes.add(new Recipe(2, 2, new int[]{ 0, 0, LEATHER, LEATHER }, Blocks.LEATHER_BOOTS.id(), 1));
 
+        // String crafting (from wool, temporary until spiders added)
+        int WOOL = Blocks.WOOL.id();
+        recipes.add(new Recipe(1, 1, new int[]{ WOOL }, Blocks.STRING.id(), 4));
+
+        // Bow crafting (stick + string)
+        int STRING = Blocks.STRING.id();
+        recipes.add(new Recipe(2, 2, new int[]{ 0, STICK, STRING, 0 }, Blocks.BOW.id(), 1));
+
+        // Arrow crafting (flint + stick + feather)
+        int FLINT = Blocks.FLINT.id();
+        int FEATHER = Blocks.FEATHER.id();
+        recipes.add(new Recipe(1, 3, new int[]{ FLINT, STICK, FEATHER }, Blocks.ARROW_ITEM.id(), 4));
+
         // Iron armor
         recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, IRON_INGOT, IRON_INGOT, 0 }, Blocks.IRON_HELMET.id(), 1));
         recipes.add(new Recipe(2, 2, new int[]{ IRON_INGOT, 0, IRON_INGOT, IRON_INGOT }, Blocks.IRON_CHESTPLATE.id(), 1));

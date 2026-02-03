@@ -11,5 +11,6 @@ public enum EntityType {
     TNT,
     COW,
     SHEEP,
-    CHICKEN
+    CHICKEN,
+    ARROW
 }

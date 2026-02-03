@@ -117,6 +117,10 @@ public final class ItemRegistry {
         register(Blocks.RAW_CHICKEN.id(),     "Raw Chicken",     Category.FOOD);
         register(Blocks.COOKED_CHICKEN.id(),  "Cooked Chicken",  Category.FOOD);
         register(Blocks.FEATHER.id(),         "Feather",         Category.MATERIALS);
+        register(Blocks.STRING.id(),          "String",          Category.MATERIALS);
+        register(Blocks.FLINT.id(),           "Flint",           Category.MATERIALS);
+        register(Blocks.BOW.id(),             "Bow",             Category.TOOLS);
+        register(Blocks.ARROW_ITEM.id(),      "Arrow",           Category.TOOLS);
         register(Blocks.ROTTEN_FLESH.id(),    "Rotten Flesh",    Category.FOOD);
 
         // ---- Vehicles ----

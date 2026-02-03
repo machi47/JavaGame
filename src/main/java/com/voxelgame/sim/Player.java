@@ -62,6 +62,11 @@ public class Player {
     private float attackCooldown = 0.0f;
     private static final float ATTACK_COOLDOWN_TIME = 0.4f;
 
+    // ---- Bow charging ----
+    private boolean bowDrawn = false;
+    private float bowChargeTime = 0.0f;
+    private static final float MAX_BOW_CHARGE = 1.0f; // 1 second for full charge
+
     // ---- Swimming / Water state ----
     private boolean inWater = false;
     private boolean headUnderwater = false;
@@ -490,5 +495,78 @@ public class Player {
         this.spawnX = x;
         this.spawnY = y;
         this.spawnZ = z;
+    }
+
+    // ================================================================
+    // Bow & Arrow Combat
+    // ================================================================
+
+    public boolean isBowDrawn() {
+        return getSelectedBlock() == Blocks.BOW.id();
+    }
+
+    public boolean hasArrows() {
+        return inventory.countItem(Blocks.ARROW_ITEM.id()) > 0;
+    }
+
+    public boolean consumeArrow() {
+        return inventory.removeItem(Blocks.ARROW_ITEM.id(), 1) > 0;
+    }
+
+    public void startChargingBow() {
+        if (isBowDrawn() && hasArrows()) {
+            bowDrawn = true;
+            bowChargeTime = 0.0f;
+        }
+    }
+
+    public void updateBowCharge(float dt) {
+        if (bowDrawn) {
+            bowChargeTime = Math.min(bowChargeTime + dt, MAX_BOW_CHARGE);
+        }
+    }
+
+    public float getBowChargePercent() {
+        return Math.min(bowChargeTime / MAX_BOW_CHARGE, 1.0f);
+    }
+
+    public boolean isBowCharging() {
+        return bowDrawn;
+    }
+
+    public ArrowEntity releaseBow() {
+        if (!bowDrawn) return null;
+        
+        float chargePercent = getBowChargePercent();
+        bowDrawn = false;
+        bowChargeTime = 0.0f;
+
+        // Must be at least 10% charged
+        if (chargePercent < 0.1f) return null;
+
+        // Consume arrow (in survival mode)
+        if (gameMode != GameMode.CREATIVE && !consumeArrow()) {
+            return null; // No arrows
+        }
+
+        // Calculate arrow speed and damage based on charge
+        float speed = 15.0f + chargePercent * 35.0f; // 15-50 blocks/sec
+        float damage = 2.0f + chargePercent * 7.0f;  // 2-9 damage
+
+        // Spawn arrow from camera position, flying in camera direction
+        Vector3f pos = camera.getPosition();
+        Vector3f dir = camera.getFront();
+        
+        ArrowEntity arrow = new ArrowEntity(pos.x, pos.y, pos.z, dir, speed, damage, this);
+        
+        System.out.printf("[Bow] Fired arrow (charge %.0f%%, speed %.1f, damage %.1f)%n", 
+            chargePercent * 100, speed, damage);
+        
+        return arrow;
+    }
+
+    public void cancelBowCharge() {
+        bowDrawn = false;
+        bowChargeTime = 0.0f;
     }
 }

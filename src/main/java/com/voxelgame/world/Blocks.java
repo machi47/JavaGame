@@ -259,12 +259,16 @@ public final class Blocks {
     public static final Block FEATHER              = new Block(128, "feather", false, true, new int[]{0}, 0.0f, -1);
     public static final Block RAW_CHICKEN          = new Block(129, "raw_chicken", false, true, new int[]{0}, 0.0f, -1);
     public static final Block COOKED_CHICKEN       = new Block(130, "cooked_chicken", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block STRING               = new Block(131, "string", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block FLINT                = new Block(132, "flint", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block BOW                  = new Block(133, "bow", false, true, new int[]{0}, 0.0f, -1);
+    public static final Block ARROW_ITEM           = new Block(134, "arrow", false, true, new int[]{0}, 0.0f, -1);
 
     /** All blocks indexed by ID for fast lookup. */
     private static final Block[] REGISTRY;
 
     static {
-        REGISTRY = new Block[131]; // IDs 0-130
+        REGISTRY = new Block[135]; // IDs 0-134
         REGISTRY[0]  = AIR;          REGISTRY[1]  = STONE;         REGISTRY[2]  = COBBLESTONE;
         REGISTRY[3]  = DIRT;         REGISTRY[4]  = GRASS;         REGISTRY[5]  = SAND;
         REGISTRY[6]  = GRAVEL;       REGISTRY[7]  = LOG;           REGISTRY[8]  = LEAVES;
@@ -336,6 +340,10 @@ public final class Blocks {
         REGISTRY[128] = FEATHER;
         REGISTRY[129] = RAW_CHICKEN;
         REGISTRY[130] = COOKED_CHICKEN;
+        REGISTRY[131] = STRING;
+        REGISTRY[132] = FLINT;
+        REGISTRY[133] = BOW;
+        REGISTRY[134] = ARROW_ITEM;
     }
 
     /**
