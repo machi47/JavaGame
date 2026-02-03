@@ -5,7 +5,7 @@ import com.voxelgame.world.Blocks;
 public final class ToolItem {
 
     public enum BlockMaterial { STONE, WOOD, DIRT, NONE }
-    public enum ToolType { PICKAXE, AXE, SHOVEL, NONE }
+    public enum ToolType { PICKAXE, AXE, SHOVEL, HOE, NONE }
 
     public enum ToolTier {
         WOOD(60, 2.0f),
@@ -54,6 +54,7 @@ public final class ToolItem {
         new ToolItem(Blocks.IRON_SWORD.id(),      ToolType.NONE,    ToolTier.IRON, "Iron Sword"),
         new ToolItem(Blocks.WOODEN_SWORD.id(),    ToolType.NONE,    ToolTier.WOOD, "Wooden Sword"),
         new ToolItem(Blocks.STONE_SWORD.id(),     ToolType.NONE,    ToolTier.STONE, "Stone Sword"),
+        new ToolItem(Blocks.WOODEN_HOE.id(),      ToolType.HOE,     ToolTier.WOOD, "Wooden Hoe"),
     };
 
     public static boolean isTool(int blockId) { return get(blockId) != null; }

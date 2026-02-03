@@ -148,6 +148,12 @@ public final class ItemRegistry {
         register(Blocks.GOLD_LEGGINGS.id(),      "Gold Leggings",       Category.TOOLS);
         register(Blocks.GOLD_BOOTS.id(),         "Gold Boots",          Category.TOOLS);
 
+        // ---- Farming ----
+        register(Blocks.WOODEN_HOE.id(),         "Wooden Hoe",        Category.TOOLS);
+        register(Blocks.WHEAT_SEEDS.id(),        "Wheat Seeds",       Category.NATURAL);
+        register(Blocks.WHEAT_ITEM.id(),         "Wheat",             Category.FOOD);
+        register(Blocks.FARMLAND.id(),           "Farmland",          Category.BUILDING);
+
         // Build the ALL category (everything)
         BY_CATEGORY.get(Category.ALL).addAll(ALL_ENTRIES);
     }

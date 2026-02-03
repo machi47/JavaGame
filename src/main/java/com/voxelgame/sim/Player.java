@@ -93,8 +93,10 @@ public class Player {
         inventory.setSlot(4, new Inventory.ItemStack(Blocks.SAND.id(), 64));
         inventory.setSlot(5, new Inventory.ItemStack(Blocks.LOG.id(), 64));
         inventory.setSlot(6, new Inventory.ItemStack(Blocks.LEAVES.id(), 64));
-        inventory.setSlot(7, new Inventory.ItemStack(Blocks.GRAVEL.id(), 64));
-        inventory.setSlot(8, new Inventory.ItemStack(Blocks.WATER.id(), 64));
+        // Farming tools in slots 7-8 for easy testing
+        int hoeDur = ToolItem.getMaxDurability(Blocks.WOODEN_HOE.id());
+        inventory.setSlot(7, new Inventory.ItemStack(Blocks.WOODEN_HOE.id(), hoeDur, hoeDur));
+        inventory.setSlot(8, new Inventory.ItemStack(Blocks.WHEAT_SEEDS.id(), 64));
     }
 
     // --- Camera / Position ---

@@ -23,6 +23,7 @@ import com.voxelgame.sim.Controller;
 import com.voxelgame.sim.Difficulty;
 import com.voxelgame.sim.Entity;
 import com.voxelgame.sim.EntityManager;
+import com.voxelgame.sim.FarmingManager;
 import com.voxelgame.sim.GameMode;
 import com.voxelgame.sim.ItemEntity;
 import com.voxelgame.sim.ItemEntityManager;
@@ -135,6 +136,7 @@ public class GameLoop {
     private ChestManager chestManager;
     private FurnaceManager furnaceManager;
     private RedstoneSystem redstoneSystem;
+    private FarmingManager farmingManager;
 
     // Current raycast hit (updated each frame)
     private Raycast.HitResult currentHit;
@@ -567,6 +569,7 @@ public class GameLoop {
         entityRenderer = new EntityRenderer();
         entityRenderer.init();
         redstoneSystem = new RedstoneSystem();
+        farmingManager = new FarmingManager();
 
         // Initial chunk load
         chunkManager.update(player);
@@ -666,6 +669,7 @@ public class GameLoop {
         entityRenderer = null;
         if (redstoneSystem != null) redstoneSystem.clear();
         redstoneSystem = null;
+        farmingManager = null;
         currentHit = null;
         currentWorldFolder = null;
         gameInitialized = false;
@@ -923,6 +927,15 @@ public class GameLoop {
         itemEntityManager.update(dt, world, player, player.getInventory());
         entityManager.update(dt, world, player, itemEntityManager);
         mobSpawner.update(dt, world, player, entityManager, worldTime);
+
+        // Tick farming (random tick crop growth)
+        if (farmingManager != null && world != null) {
+            Set<ChunkPos> farmDirty = farmingManager.update(dt, world,
+                player.getPosition().x, player.getPosition().z);
+            if (!farmDirty.isEmpty()) {
+                chunkManager.rebuildChunks(farmDirty);
+            }
+        }
 
         // Tick furnaces
         if (furnaceManager != null) {
@@ -1311,6 +1324,43 @@ public class GameLoop {
                     furnaceScreen.open(furnace);
                     Input.unlockCursor();
                 }
+                // ---- Farming: Hoe on dirt/grass → farmland ----
+                else if (Blocks.isHoe(player.getSelectedBlock()) && Blocks.isTillable(hitBlockId)) {
+                    int bx = currentHit.x(), by = currentHit.y(), bz = currentHit.z();
+                    world.setBlock(bx, by, bz, Blocks.FARMLAND.id());
+                    Set<ChunkPos> affected = Lighting.onBlockPlaced(world, bx, by, bz);
+                    chunkManager.rebuildMeshAt(bx, by, bz);
+                    chunkManager.rebuildChunks(affected);
+
+                    // Damage hoe tool in survival
+                    if (!isCreative) {
+                        Inventory.ItemStack heldTool = player.getInventory().getSlot(player.getSelectedSlot());
+                        if (heldTool != null && heldTool.hasDurability()) {
+                            boolean broke = heldTool.damageTool(1);
+                            if (broke) {
+                                player.getInventory().setSlot(player.getSelectedSlot(), null);
+                                System.out.println("[Farming] Hoe broke!");
+                            }
+                        }
+                    }
+                    System.out.println("[Farming] Tilled dirt at (" + bx + ", " + by + ", " + bz + ")");
+                }
+                // ---- Farming: Seeds on farmland → plant wheat ----
+                else if (player.getSelectedBlock() == Blocks.WHEAT_SEEDS.id() && Blocks.isFarmland(hitBlockId)) {
+                    int px = currentHit.x();
+                    int py = currentHit.y() + 1; // plant on top of farmland
+                    int pz = currentHit.z();
+                    int aboveBlock = world.getBlock(px, py, pz);
+                    if (aboveBlock == Blocks.AIR.id()) {
+                        world.setBlock(px, py, pz, Blocks.WHEAT_CROP_0.id());
+                        chunkManager.rebuildMeshAt(px, py, pz);
+
+                        if (!isCreative) {
+                            player.consumeSelectedBlock();
+                        }
+                        System.out.println("[Farming] Planted wheat at (" + px + ", " + py + ", " + pz + ")");
+                    }
+                }
                 // Try to eat food item (cooked/raw porkchop, beef, or chicken)
                 else if (player.getSelectedBlock() == Blocks.COOKED_PORKCHOP.id()
                          || player.getSelectedBlock() == Blocks.RAW_PORKCHOP.id()
@@ -1472,6 +1522,14 @@ public class GameLoop {
             }
         }
 
+        // If farmland is broken, also break any wheat crop on top
+        if (Blocks.isFarmland(blockId)) {
+            int aboveId = world.getBlock(bx, by + 1, bz);
+            if (Blocks.isWheatCrop(aboveId)) {
+                breakBlock(bx, by + 1, bz, aboveId, spawnDrops);
+            }
+        }
+
         // Handle redstone component removal (before block is removed)
         boolean wasRedstone = Blocks.isRedstoneComponent(blockId);
         int oldLightEmission = Blocks.getLightEmission(blockId);
@@ -1500,15 +1558,29 @@ public class GameLoop {
         }
 
         if (spawnDrops) {
-            int dropId = block.getDrop();
-            
-            // Special case: gravel has 10% chance to drop flint instead of itself
-            if (blockId == Blocks.GRAVEL.id() && Math.random() < 0.10) {
-                dropId = Blocks.FLINT.id();
-            }
-            
-            if (dropId > 0) {
-                itemEntityManager.spawnDrop(dropId, 1, bx, by, bz);
+            // Special case: wheat crop drops
+            if (Blocks.isWheatCrop(blockId)) {
+                int stage = Blocks.getWheatStage(blockId);
+                if (stage >= 7) {
+                    // Mature wheat: drop 1 wheat item + 0-3 seeds
+                    itemEntityManager.spawnDrop(Blocks.WHEAT_ITEM.id(), 1, bx, by, bz);
+                    int seedCount = 1 + (int)(Math.random() * 3); // 1-3 seeds
+                    itemEntityManager.spawnDrop(Blocks.WHEAT_SEEDS.id(), seedCount, bx, by, bz);
+                } else {
+                    // Immature wheat: drop only 1 seed
+                    itemEntityManager.spawnDrop(Blocks.WHEAT_SEEDS.id(), 1, bx, by, bz);
+                }
+            } else {
+                int dropId = block.getDrop();
+
+                // Special case: gravel has 10% chance to drop flint instead of itself
+                if (blockId == Blocks.GRAVEL.id() && Math.random() < 0.10) {
+                    dropId = Blocks.FLINT.id();
+                }
+
+                if (dropId > 0) {
+                    itemEntityManager.spawnDrop(dropId, 1, bx, by, bz);
+                }
             }
         }
     }

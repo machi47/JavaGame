@@ -215,6 +215,13 @@ public class NaiveMesher implements Mesher {
                         continue;
                     }
 
+                    // Special rendering for wheat crops: cross-shaped billboard (like flowers)
+                    if (Blocks.isWheatCrop(blockId)) {
+                        opaqueVertexCount = meshCross(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                       wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
                     // Special rendering for rails: flat quad on ground
                     // Rendered in OPAQUE pass with alpha-discard
                     if (Blocks.isRail(blockId)) {

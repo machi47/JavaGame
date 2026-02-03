@@ -242,16 +242,19 @@ public final class Blocks {
     public static final Block GOLD_CHESTPLATE      = new Block(111, "gold_chestplate", false, true, new int[]{0}, 0.0f, -1);
     public static final Block GOLD_LEGGINGS        = new Block(112, "gold_leggings", false, true, new int[]{0}, 0.0f, -1);
     public static final Block GOLD_BOOTS           = new Block(113, "gold_boots", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block FARMLAND             = new Block(114, "farmland", true, false, new int[]{0}, 0.0f, -1);
+    // Farmland: tilled dirt, solid, texture 48 (top=tilled, sides/bottom=dirt)
+    public static final Block FARMLAND             = new Block(114, "farmland", true, false, new int[]{48, 3, 3, 3, 3, 3}, 0.6f, 3); // drops dirt
     public static final Block SUGAR_CANE           = new Block(115, "sugar_cane", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_0         = new Block(116, "wheat_crop_0", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_1         = new Block(117, "wheat_crop_1", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_2         = new Block(118, "wheat_crop_2", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_3         = new Block(119, "wheat_crop_3", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_4         = new Block(120, "wheat_crop_4", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_5         = new Block(121, "wheat_crop_5", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_6         = new Block(122, "wheat_crop_6", false, true, new int[]{0}, 0.0f, -1);
-    public static final Block WHEAT_CROP_7         = new Block(123, "wheat_crop_7", false, true, new int[]{0}, 0.0f, -1);
+    // Wheat crops: stages 0-7, non-solid transparent, cross-billboard rendered, instant break
+    // Drops are handled specially in GameLoop (not via dropId)
+    public static final Block WHEAT_CROP_0         = new Block(116, "wheat_crop_0", false, true, new int[]{49}, 0.0f, 0);
+    public static final Block WHEAT_CROP_1         = new Block(117, "wheat_crop_1", false, true, new int[]{50}, 0.0f, 0);
+    public static final Block WHEAT_CROP_2         = new Block(118, "wheat_crop_2", false, true, new int[]{51}, 0.0f, 0);
+    public static final Block WHEAT_CROP_3         = new Block(119, "wheat_crop_3", false, true, new int[]{52}, 0.0f, 0);
+    public static final Block WHEAT_CROP_4         = new Block(120, "wheat_crop_4", false, true, new int[]{53}, 0.0f, 0);
+    public static final Block WHEAT_CROP_5         = new Block(121, "wheat_crop_5", false, true, new int[]{54}, 0.0f, 0);
+    public static final Block WHEAT_CROP_6         = new Block(122, "wheat_crop_6", false, true, new int[]{55}, 0.0f, 0);
+    public static final Block WHEAT_CROP_7         = new Block(123, "wheat_crop_7", false, true, new int[]{56}, 0.0f, 0);
     public static final Block LEATHER              = new Block(124, "leather", false, true, new int[]{0}, 0.0f, -1);
     public static final Block RAW_BEEF             = new Block(125, "raw_beef", false, true, new int[]{0}, 0.0f, -1);
     public static final Block COOKED_BEEF          = new Block(126, "cooked_beef", false, true, new int[]{0}, 0.0f, -1);
@@ -264,11 +267,16 @@ public final class Blocks {
     public static final Block BOW                  = new Block(133, "bow", false, true, new int[]{0}, 0.0f, -1);
     public static final Block ARROW_ITEM           = new Block(134, "arrow", false, true, new int[]{0}, 0.0f, -1);
 
+    // ---- Farming items ----
+    public static final Block WOODEN_HOE           = new Block(135, "wooden_hoe", false, true, new int[]{57}, 0.0f, -1);
+    public static final Block WHEAT_SEEDS          = new Block(136, "wheat_seeds", false, true, new int[]{58}, 0.0f, -1);
+    public static final Block WHEAT_ITEM           = new Block(137, "wheat", false, true, new int[]{59}, 0.0f, -1);
+
     /** All blocks indexed by ID for fast lookup. */
     private static final Block[] REGISTRY;
 
     static {
-        REGISTRY = new Block[135]; // IDs 0-134
+        REGISTRY = new Block[138]; // IDs 0-137
         REGISTRY[0]  = AIR;          REGISTRY[1]  = STONE;         REGISTRY[2]  = COBBLESTONE;
         REGISTRY[3]  = DIRT;         REGISTRY[4]  = GRASS;         REGISTRY[5]  = SAND;
         REGISTRY[6]  = GRAVEL;       REGISTRY[7]  = LOG;           REGISTRY[8]  = LEAVES;
@@ -344,6 +352,9 @@ public final class Blocks {
         REGISTRY[132] = FLINT;
         REGISTRY[133] = BOW;
         REGISTRY[134] = ARROW_ITEM;
+        REGISTRY[135] = WOODEN_HOE;
+        REGISTRY[136] = WHEAT_SEEDS;
+        REGISTRY[137] = WHEAT_ITEM;
     }
 
     /**
@@ -492,7 +503,8 @@ public final class Blocks {
             || blockId == WOOD_BUTTON.id()
             || blockId == STONE_BUTTON.id()
             || blockId == LEVER.id()
-            || blockId == SNOW_LAYER.id();
+            || blockId == SNOW_LAYER.id()
+            || isWheatCrop(blockId);
     }
 
     /**
@@ -582,5 +594,20 @@ public final class Blocks {
         if (stage < 0) stage = 0;
         if (stage > 7) stage = 7;
         return WHEAT_CROP_0.id() + stage;
+    }
+
+    /** Check if a block is farmland. */
+    public static boolean isFarmland(int blockId) {
+        return blockId == FARMLAND.id();
+    }
+
+    /** Check if a block is tillable (dirt or grass). */
+    public static boolean isTillable(int blockId) {
+        return blockId == DIRT.id() || blockId == GRASS.id();
+    }
+
+    /** Check if a block is a hoe tool. */
+    public static boolean isHoe(int blockId) {
+        return blockId == WOODEN_HOE.id();
     }
 }

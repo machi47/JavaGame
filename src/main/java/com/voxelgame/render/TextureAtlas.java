@@ -15,7 +15,7 @@ public class TextureAtlas {
 
     private static final int TILE_SIZE = 16;
     private static final int TILES_PER_ROW = 8;
-    private static final int TILE_COUNT = 48; // 0-47 (includes fluids: 46=lava, 47=obsidian)
+    private static final int TILE_COUNT = 60; // 0-59 (includes farming: 48=farmland, 49-56=wheat stages, 57=hoe, 58=seeds, 59=wheat item)
     private static final int ATLAS_WIDTH = TILES_PER_ROW * TILE_SIZE;  // 128
     private static final int ATLAS_HEIGHT = ((TILE_COUNT + TILES_PER_ROW - 1) / TILES_PER_ROW) * TILE_SIZE;
 
@@ -108,6 +108,19 @@ public class TextureAtlas {
             case 45 -> generateRedstoneOre(pixels, baseX, baseY);
             case 46 -> generateLava(pixels, baseX, baseY);
             case 47 -> generateObsidian(pixels, baseX, baseY);
+            // Farming textures
+            case 48 -> generateFarmland(pixels, baseX, baseY);
+            case 49 -> generateWheatStage(pixels, baseX, baseY, 0);
+            case 50 -> generateWheatStage(pixels, baseX, baseY, 1);
+            case 51 -> generateWheatStage(pixels, baseX, baseY, 2);
+            case 52 -> generateWheatStage(pixels, baseX, baseY, 3);
+            case 53 -> generateWheatStage(pixels, baseX, baseY, 4);
+            case 54 -> generateWheatStage(pixels, baseX, baseY, 5);
+            case 55 -> generateWheatStage(pixels, baseX, baseY, 6);
+            case 56 -> generateWheatStage(pixels, baseX, baseY, 7);
+            case 57 -> generateHoeIcon(pixels, baseX, baseY);
+            case 58 -> generateSeedsIcon(pixels, baseX, baseY);
+            case 59 -> generateWheatItem(pixels, baseX, baseY);
         }
     }
 
@@ -817,6 +830,190 @@ public class TextureAtlas {
                     b = clamp(30 + noise / 2);
                 }
                 setPixel(buf, bx + x, by + y, r, g, b, 255);
+            }
+    }
+
+    /**
+     * Farmland texture: tilled dirt — darker brown with horizontal furrow lines.
+     */
+    private void generateFarmland(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 15) - 8;
+                // Darker brown than regular dirt
+                int baseR = 120, baseG = 80, baseB = 55;
+                // Horizontal furrow lines every 2 pixels
+                boolean furrow = (y % 4 == 0 || y % 4 == 1);
+                if (furrow) {
+                    baseR -= 20; baseG -= 15; baseB -= 10;
+                }
+                setPixel(buf, bx + x, by + y,
+                    clamp(baseR + noise), clamp(baseG + noise), clamp(baseB + noise), 255);
+            }
+    }
+
+    /**
+     * Wheat crop texture — cross-billboard sprite.
+     * Stage 0-2: small green sprouts
+     * Stage 3-5: taller green stalks
+     * Stage 6: tall green-yellow stalks
+     * Stage 7: golden mature wheat with grain heads
+     */
+    private void generateWheatStage(ByteBuffer buf, int bx, int by, int stage) {
+        // Height of crop in pixels (out of 16)
+        int cropHeight = switch (stage) {
+            case 0 -> 4;
+            case 1 -> 6;
+            case 2 -> 8;
+            case 3 -> 10;
+            case 4 -> 11;
+            case 5 -> 13;
+            case 6 -> 14;
+            case 7 -> 16;
+            default -> 4;
+        };
+
+        // Color transitions: green → yellow-green → golden
+        int stalkR, stalkG, stalkB;
+        int headR = 0, headG = 0, headB = 0;
+        boolean hasHead = stage >= 5;
+
+        if (stage <= 2) {
+            // Young: bright green
+            stalkR = 60; stalkG = 160; stalkB = 40;
+        } else if (stage <= 4) {
+            // Growing: darker green
+            stalkR = 70; stalkG = 145; stalkB = 35;
+        } else if (stage == 5) {
+            // Maturing: green-yellow
+            stalkR = 120; stalkG = 155; stalkB = 40;
+            headR = 160; headG = 140; headB = 40;
+        } else if (stage == 6) {
+            // Almost ripe: yellow-green
+            stalkR = 150; stalkG = 150; stalkB = 35;
+            headR = 200; headG = 170; headB = 50;
+        } else {
+            // Mature: golden
+            stalkR = 190; stalkG = 165; stalkB = 50;
+            headR = 220; headG = 190; headB = 60;
+        }
+
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x + stage * 7, y + stage * 13) & 7) - 4;
+                int pixelFromBottom = TILE_SIZE - 1 - y;
+
+                if (pixelFromBottom >= cropHeight) {
+                    // Above crop → transparent
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                    continue;
+                }
+
+                // Wheat stalks pattern: vertical lines at specific x positions
+                boolean isStem = (x == 3 || x == 7 || x == 11 || x == 14);
+                // Add leaf blades adjacent to stems
+                boolean isLeaf = (x == 2 || x == 4 || x == 6 || x == 8 || x == 10 || x == 12 || x == 13 || x == 15)
+                                 && (pixelFromBottom > 1) && (pixelFromBottom < cropHeight - 1)
+                                 && ((pixelFromBottom + x) % 3 == 0);
+
+                // Grain head at top (last 3 pixels)
+                boolean isGrainHead = hasHead && (pixelFromBottom >= cropHeight - 3)
+                                     && (isStem || ((x >= 2 && x <= 14) && (pixelFromBottom + x) % 2 == 0));
+
+                if (isGrainHead) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(headR + noise), clamp(headG + noise), clamp(headB + noise), 255);
+                } else if (isStem) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(stalkR + noise), clamp(stalkG + noise), clamp(stalkB + noise), 255);
+                } else if (isLeaf) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(stalkR - 10 + noise), clamp(stalkG + 10 + noise), clamp(stalkB - 5 + noise), 220);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    /**
+     * Hoe icon for hotbar: wooden handle with flat blade.
+     */
+    private void generateHoeIcon(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 3) - 2;
+                // Handle: diagonal from bottom-left to center
+                boolean handle = false;
+                int hx = x - 2, hy = (TILE_SIZE - 1 - y) - 2;
+                if (hx >= 0 && hx <= 8 && hy >= 0 && hy <= 8 && Math.abs(hx - hy) <= 1) {
+                    handle = true;
+                }
+                // Blade: horizontal piece at top-right
+                boolean blade = (x >= 8 && x <= 14 && y >= 2 && y <= 5);
+
+                if (blade) {
+                    // Stone-colored blade
+                    setPixel(buf, bx + x, by + y,
+                        clamp(140 + noise), clamp(140 + noise), clamp(140 + noise), 255);
+                } else if (handle) {
+                    // Wooden handle
+                    setPixel(buf, bx + x, by + y,
+                        clamp(120 + noise), clamp(85 + noise), clamp(50 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    /**
+     * Wheat seeds icon: small scattered seed dots.
+     */
+    private void generateSeedsIcon(ByteBuffer buf, int bx, int by) {
+        // Seed positions (hand-placed for nice look)
+        int[][] seeds = {{4,6},{7,4},{10,7},{5,10},{8,9},{12,5},{6,13},{11,11},{3,8},{9,12}};
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                boolean isSeed = false;
+                for (int[] s : seeds) {
+                    if (Math.abs(x - s[0]) <= 1 && Math.abs(y - s[1]) == 0) {
+                        isSeed = true; break;
+                    }
+                }
+                if (isSeed) {
+                    int noise = (hash(x, y) & 7) - 4;
+                    setPixel(buf, bx + x, by + y,
+                        clamp(100 + noise), clamp(130 + noise), clamp(40 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
+            }
+    }
+
+    /**
+     * Wheat item icon: golden wheat sheaf.
+     */
+    private void generateWheatItem(ByteBuffer buf, int bx, int by) {
+        for (int y = 0; y < TILE_SIZE; y++)
+            for (int x = 0; x < TILE_SIZE; x++) {
+                int noise = (hash(x, y) & 7) - 4;
+                // Three stalks with grain heads
+                boolean stalk1 = (x == 6 && y >= 5 && y <= 14);
+                boolean stalk2 = (x == 8 && y >= 4 && y <= 14);
+                boolean stalk3 = (x == 10 && y >= 5 && y <= 14);
+                // Grain heads at top
+                boolean head1 = (x >= 5 && x <= 7 && y >= 2 && y <= 5);
+                boolean head2 = (x >= 7 && x <= 9 && y >= 1 && y <= 4);
+                boolean head3 = (x >= 9 && x <= 11 && y >= 2 && y <= 5);
+
+                if (head1 || head2 || head3) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(220 + noise), clamp(185 + noise), clamp(55 + noise), 255);
+                } else if (stalk1 || stalk2 || stalk3) {
+                    setPixel(buf, bx + x, by + y,
+                        clamp(180 + noise), clamp(155 + noise), clamp(45 + noise), 255);
+                } else {
+                    setPixel(buf, bx + x, by + y, 0, 0, 0, 0);
+                }
             }
     }
 
