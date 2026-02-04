@@ -75,48 +75,57 @@ def gen_stone():
 
 def gen_cobblestone():
     """Tile 2: COBBLESTONE - THE REFERENCE TEXTURE
-    Pure black cracks, bright white highlights, chunky irregular stones.
+    Mostly gray stones with thin black cracks between them. White highlights on stones.
     """
     pixels = []
-    # Define chunky stone shapes (hand-placed for good tiling)
+    # Define chunky stone shapes (hand-placed for good tiling) - BIGGER coverage
     stones = [
         # (x, y, radius, base_value)
-        (3, 3, 3, 180),
-        (11, 3, 2.5, 160),
-        (7, 8, 3.5, 190),
-        (2, 11, 2, 170),
-        (13, 12, 2.5, 175),
+        (3, 3, 3.5, 175),
+        (11, 3, 3, 155),
+        (7, 8, 4, 185),
+        (2, 11, 2.5, 165),
+        (13, 12, 3, 170),
+        (7, 14, 2.5, 160),
+        (14, 7, 2, 180),
     ]
     
     for y in range(TILE_SIZE):
         row = []
         for x in range(TILE_SIZE):
-            # Default: dark grout/crack (pure black or near-black)
-            v = 15 + (noise(x, y, 2) % 20)
+            # Default: medium gray (most of tile should be stone, not crack)
+            v = 140
+            in_stone = False
             
             # Check if pixel is inside a stone
             for sx, sy, sr, base in stones:
                 dist = ((x - sx)**2 + (y - sy)**2) ** 0.5
                 if dist < sr:
                     # Inside stone
+                    in_stone = True
                     v = base
                     # Add texture variation
-                    v += (noise(x, y, 5) % 30) - 15
+                    v += (noise(x, y, 5) % 25) - 12
                     # Add bright highlights on top-left
-                    if x < sx and y < sy:
-                        v += 40
+                    if x < sx and y < sy and dist < sr * 0.7:
+                        v += 50
                     # Add shadows on bottom-right
                     elif x > sx and y > sy:
-                        v -= 30
+                        v -= 25
                     break
             
-            # Add extra pure black cracks between stones
-            if noise(x, y, 11) % 20 < 1:
-                v = 0  # Pure black
+            # If NOT in a stone, it's a crack (but keep cracks THIN)
+            if not in_stone:
+                # Thin cracks between stones
+                v = 5 + (noise(x, y, 2) % 15)
+            
+            # Add occasional pure black pixels for deep cracks
+            if not in_stone and noise(x, y, 11) % 8 < 1:
+                v = 0
             
             # Add bright white highlights on stone edges
-            if v > 140 and noise(x, y, 17) % 10 < 1:
-                v = 255  # Pure white
+            if in_stone and v > 160 and noise(x, y, 17) % 12 < 1:
+                v = 255
             
             v = clamp(v)
             row.append((v, v, v, 255))
