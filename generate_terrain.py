@@ -75,57 +75,76 @@ def gen_stone():
 
 def gen_cobblestone():
     """Tile 2: COBBLESTONE - THE REFERENCE TEXTURE
-    Mostly gray stones with thin black cracks between them. White highlights on stones.
+    Voronoi-based mosaic with seamless tiling. Stones fit together, thin cracks at boundaries.
     """
     pixels = []
-    # Define chunky stone shapes (hand-placed for good tiling) - BIGGER coverage
-    stones = [
-        # (x, y, radius, base_value)
-        (3, 3, 3.5, 175),
-        (11, 3, 3, 155),
-        (7, 8, 4, 185),
-        (2, 11, 2.5, 165),
-        (13, 12, 3, 170),
-        (7, 14, 2.5, 160),
-        (14, 7, 2, 180),
+    
+    # Stone centers for Voronoi tessellation
+    # Placed to ensure seamless tiling when wrapped
+    stone_centers = [
+        (2, 2, 165),
+        (8, 1, 180),
+        (14, 3, 155),
+        (4, 6, 175),
+        (11, 7, 170),
+        (1, 10, 160),
+        (7, 11, 185),
+        (13, 13, 150),
+        (3, 14, 168),
     ]
     
     for y in range(TILE_SIZE):
         row = []
         for x in range(TILE_SIZE):
-            # Default: medium gray (most of tile should be stone, not crack)
-            v = 140
-            in_stone = False
+            # Find nearest stone center (Voronoi with wrapping for seamless tiling)
+            min_dist = 999
+            nearest_stone = None
+            second_dist = 999
             
-            # Check if pixel is inside a stone
-            for sx, sy, sr, base in stones:
-                dist = ((x - sx)**2 + (y - sy)**2) ** 0.5
-                if dist < sr:
-                    # Inside stone
-                    in_stone = True
-                    v = base
-                    # Add texture variation
-                    v += (noise(x, y, 5) % 25) - 12
-                    # Add bright highlights on top-left
-                    if x < sx and y < sy and dist < sr * 0.7:
-                        v += 50
-                    # Add shadows on bottom-right
-                    elif x > sx and y > sy:
-                        v -= 25
-                    break
+            for sx, sy, base_v in stone_centers:
+                # Check all 9 positions (center + 8 wrapped neighbors)
+                for ox in [-TILE_SIZE, 0, TILE_SIZE]:
+                    for oy in [-TILE_SIZE, 0, TILE_SIZE]:
+                        wx = sx + ox
+                        wy = sy + oy
+                        dist = ((x - wx)**2 + (y - wy)**2) ** 0.5
+                        
+                        if dist < min_dist:
+                            second_dist = min_dist
+                            min_dist = dist
+                            nearest_stone = (wx, wy, base_v)
+                        elif dist < second_dist:
+                            second_dist = dist
             
-            # If NOT in a stone, it's a crack (but keep cracks THIN)
-            if not in_stone:
-                # Thin cracks between stones
-                v = 5 + (noise(x, y, 2) % 15)
+            wx, wy, base_v = nearest_stone
             
-            # Add occasional pure black pixels for deep cracks
-            if not in_stone and noise(x, y, 11) % 8 < 1:
-                v = 0
+            # Check if pixel is on a crack (near boundary between two stones)
+            on_crack = (second_dist - min_dist) < 0.7
             
-            # Add bright white highlights on stone edges
-            if in_stone and v > 160 and noise(x, y, 17) % 12 < 1:
-                v = 255
+            if on_crack:
+                # Thin black crack
+                v = 8 + (noise(x, y, 2) % 18)
+            else:
+                # Inside stone
+                v = base_v
+                
+                # Texture variation within stone
+                v += (noise(x, y, 5) % 28) - 14
+                
+                # Directional lighting per stone
+                dx = x - wx
+                dy = y - wy
+                
+                # Top-left gets brighter (highlight)
+                if dx < 0 and dy < 0:
+                    v += 40
+                # Bottom-right gets darker (shadow)
+                elif dx > 0 and dy > 0:
+                    v -= 28
+                
+                # Rare pure white highlights
+                if v > 175 and noise(x, y, 17) % 20 < 1:
+                    v = 255
             
             v = clamp(v)
             row.append((v, v, v, 255))
