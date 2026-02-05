@@ -253,50 +253,12 @@ public class DebugOverlay {
 
     /**
      * Render a translucent background rectangle.
-     * Uses immediate mode for simplicity (could be optimized with a quad shader).
+     * Note: Currently a no-op since we're using core profile OpenGL (no immediate mode).
+     * The text shadow provides sufficient readability. Could add shader-based quad later.
      */
     private void renderBackgroundPanel(float x, float y, float width, float height, int screenW, int screenH) {
-        // Save current state
-        boolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        
-        glDisable(GL_DEPTH_TEST);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        // Use legacy immediate mode for simple quad (available in GL33 compat profile)
-        // Convert from top-left origin to OpenGL bottom-left
-        float x0 = x;
-        float y0 = screenH - y - height;
-        float x1 = x + width;
-        float y1 = screenH - y;
-
-        glMatrixMode(GL_PROJECTION);
-        glPushMatrix();
-        glLoadIdentity();
-        glOrtho(0, screenW, 0, screenH, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
-        glLoadIdentity();
-
-        glColor4f(BG_R, BG_G, BG_B, BG_A);
-        glBegin(GL_QUADS);
-        glVertex2f(x0, y0);
-        glVertex2f(x1, y0);
-        glVertex2f(x1, y1);
-        glVertex2f(x0, y1);
-        glEnd();
-
-        glPopMatrix();
-        glMatrixMode(GL_PROJECTION);
-        glPopMatrix();
-        glMatrixMode(GL_MODELVIEW);
-
-        // Restore color
-        glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-        if (depthWasEnabled) {
-            glEnable(GL_DEPTH_TEST);
-        }
+        // Background panel rendering disabled - text shadow provides sufficient readability
+        // A proper implementation would use a dedicated quad shader
     }
 
     /**
