@@ -40,6 +40,12 @@ public class Renderer {
 
     /** Current fog/sky color. Updated each frame from WorldTime. */
     private float[] fogColor = {0.53f, 0.68f, 0.90f};
+    
+    /** Current sun direction vector. Updated each frame from WorldTime. */
+    private float[] sunDirection = {0.0f, 1.0f, 0.0f};
+    
+    /** Current sun intensity for directional lighting. Updated each frame from WorldTime. */
+    private float sunIntensity = 1.0f;
 
     /** LOD configuration — controls fog distances. May be null if LOD not initialized. */
     private LODConfig lodConfig;
@@ -64,11 +70,13 @@ public class Renderer {
         this.lodConfig = lodConfig;
     }
 
-    /** Update sun brightness and fog color from world time. Call once per frame. */
+    /** Update sun brightness, fog color, sun direction, and sun intensity from world time. Call once per frame. */
     public void updateLighting(WorldTime worldTime) {
         if (worldTime != null) {
             this.sunBrightness = worldTime.getSunBrightness();
             this.fogColor = worldTime.getSkyColor();
+            this.sunDirection = worldTime.getSunDirection();
+            this.sunIntensity = worldTime.getSunIntensity();
         }
     }
 
@@ -108,6 +116,8 @@ public class Renderer {
         blockShader.setMat4("uView", view);
         blockShader.setInt("uAtlas", 0);
         blockShader.setFloat("uSunBrightness", sunBrightness);
+        blockShader.setVec3("uSunDirection", sunDirection[0], sunDirection[1], sunDirection[2]);
+        blockShader.setFloat("uSunIntensity", sunIntensity);
         blockShader.setVec3("uCameraPos", camera.getPosition());
         blockShader.setVec3("uFogColor", fogColor[0], fogColor[1], fogColor[2]);
         blockShader.setFloat("uFogStart", fogStart);

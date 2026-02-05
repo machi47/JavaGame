@@ -15,6 +15,7 @@ out float vSkyLight;
 out float vBlockLight;
 out float vFogFactor;
 out vec3 vViewPos;   // view-space position (for SSAO)
+out vec3 vWorldPos;  // world-space position (for directional lighting)
 
 void main() {
     vec4 viewPos4 = uView * vec4(aPos, 1.0);
@@ -23,6 +24,7 @@ void main() {
     vSkyLight = aSkyLight;
     vBlockLight = aBlockLight;
     vViewPos = viewPos4.xyz;
+    vWorldPos = aPos;  // Pass world position for normal calculation in fragment
 
     // Distance-based fog (linear, using dynamic uniforms from LOD config)
     float dist = length(aPos - uCameraPos);
