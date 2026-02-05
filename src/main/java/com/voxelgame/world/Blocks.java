@@ -59,8 +59,8 @@ public final class Blocks {
     public static final Block TNT            = new Block(28, "tnt",            true,  false, new int[]{25, 25, 26, 26, 26, 26}, 0.0f,  0);  // instant break, drops nothing (activates instead)
 
     // ---- Advanced feature items (non-solid, non-placeable) ----
-    public static final Block BOAT_ITEM      = new Block(29, "boat",           false, true,  new int[]{100},                0.0f, -1);  // stick (placeholder)
-    public static final Block MINECART_ITEM  = new Block(30, "minecart",       false, true,  new int[]{32},                 0.0f, -1);  // iron_ingot
+    public static final Block BOAT_ITEM      = new Block(29, "boat",           false, true,  new int[]{106},                0.0f, -1);  // boat sprite
+    public static final Block MINECART_ITEM  = new Block(30, "minecart",       false, true,  new int[]{107},                0.0f, -1);  // minecart sprite
 
     // ---- InfDev 611 blocks/items ----
 
@@ -255,15 +255,15 @@ public final class Blocks {
     public static final Block WHEAT_CROP_5         = new Block(121, "wheat_crop_5", false, true, new int[]{54}, 0.0f, 0);
     public static final Block WHEAT_CROP_6         = new Block(122, "wheat_crop_6", false, true, new int[]{55}, 0.0f, 0);
     public static final Block WHEAT_CROP_7         = new Block(123, "wheat_crop_7", false, true, new int[]{56}, 0.0f, 0);
-    public static final Block LEATHER              = new Block(124, "leather", false, true, new int[]{100}, 0.0f, -1);  // stick (placeholder)
+    public static final Block LEATHER              = new Block(124, "leather", false, true, new int[]{103}, 0.0f, -1);  // leather sprite
     public static final Block RAW_BEEF             = new Block(125, "raw_beef", false, true, new int[]{17}, 0.0f, -1);  // raw_porkchop (keep)
     public static final Block COOKED_BEEF          = new Block(126, "cooked_beef", false, true, new int[]{34}, 0.0f, -1);  // cooked_porkchop (keep)
-    public static final Block WOOL                 = new Block(127, "wool", true, false, new int[]{6}, 0.8f, -1);  // sand (off-white block)
+    public static final Block WOOL                 = new Block(127, "wool", true, false, new int[]{108}, 0.8f, -1);  // wool sprite
     public static final Block FEATHER              = new Block(128, "feather", false, true, new int[]{58}, 0.0f, -1);  // wheat seeds (placeholder)
     public static final Block RAW_CHICKEN          = new Block(129, "raw_chicken", false, true, new int[]{17}, 0.0f, -1);  // raw_porkchop (reuse)
     public static final Block COOKED_CHICKEN       = new Block(130, "cooked_chicken", false, true, new int[]{34}, 0.0f, -1);  // cooked_porkchop (reuse)
-    public static final Block STRING               = new Block(131, "string", false, true, new int[]{6}, 0.0f, -1);  // sand (off-white)
-    public static final Block FLINT                = new Block(132, "flint", false, true, new int[]{7}, 0.0f, -1);  // gravel
+    public static final Block STRING               = new Block(131, "string", false, true, new int[]{104}, 0.0f, -1);  // string sprite
+    public static final Block FLINT                = new Block(132, "flint", false, true, new int[]{105}, 0.0f, -1);  // flint sprite
     public static final Block BOW                  = new Block(133, "bow", false, true, new int[]{101}, 0.0f, -1);  // bow sprite
     public static final Block ARROW_ITEM           = new Block(134, "arrow", false, true, new int[]{102}, 0.0f, -1);  // arrow sprite
 
