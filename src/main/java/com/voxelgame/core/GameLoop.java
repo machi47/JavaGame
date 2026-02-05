@@ -566,6 +566,7 @@ public class GameLoop {
         controller.setItemEntityManager(itemEntityManager);
         itemEntityRenderer = new ItemEntityRenderer();
         itemEntityRenderer.init();
+        itemEntityRenderer.setAtlas(renderer.getAtlas());
 
         worldTime = new WorldTime();
         entityManager = new EntityManager();

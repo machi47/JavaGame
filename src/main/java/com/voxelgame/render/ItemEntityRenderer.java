@@ -1,6 +1,8 @@
 package com.voxelgame.render;
 
 import com.voxelgame.sim.ItemEntity;
+import com.voxelgame.world.Block;
+import com.voxelgame.world.Blocks;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
 
@@ -10,89 +12,46 @@ import java.util.List;
 import static org.lwjgl.opengl.GL33.*;
 
 /**
- * Renders dropped item entities as small colored cubes floating in the world.
+ * Renders dropped item entities as textured billboards floating in the world.
+ * Uses the texture atlas for consistent visuals with inventory/hotbar.
  */
 public class ItemEntityRenderer {
 
-    private static final float[][] BLOCK_COLORS = {
-        {0.0f, 0.0f, 0.0f},       //  0 AIR
-        {0.47f, 0.47f, 0.47f},     //  1 STONE
-        {0.39f, 0.39f, 0.39f},     //  2 COBBLESTONE
-        {0.53f, 0.38f, 0.26f},     //  3 DIRT
-        {0.30f, 0.60f, 0.00f},     //  4 GRASS
-        {0.84f, 0.81f, 0.60f},     //  5 SAND
-        {0.51f, 0.49f, 0.49f},     //  6 GRAVEL
-        {0.39f, 0.27f, 0.16f},     //  7 LOG
-        {0.20f, 0.51f, 0.04f},     //  8 LEAVES
-        {0.12f, 0.31f, 0.78f},     //  9 WATER
-        {0.35f, 0.35f, 0.35f},     // 10 COAL_ORE
-        {0.55f, 0.45f, 0.35f},     // 11 IRON_ORE
-        {0.75f, 0.65f, 0.20f},     // 12 GOLD_ORE
-        {0.39f, 0.86f, 1.00f},     // 13 DIAMOND_ORE
-        {0.16f, 0.16f, 0.16f},     // 14 BEDROCK
-        {0.95f, 0.55f, 0.50f},     // 15 RAW_PORKCHOP
-        {0.55f, 0.40f, 0.25f},     // 16 ROTTEN_FLESH
-        {0.70f, 0.55f, 0.30f},     // 17 PLANKS
-        {0.60f, 0.45f, 0.25f},     // 18 CRAFTING_TABLE
-        {0.65f, 0.50f, 0.25f},     // 19 STICK
-        {0.58f, 0.42f, 0.20f},     // 20 WOODEN_PICKAXE
-        {0.55f, 0.40f, 0.18f},     // 21 WOODEN_AXE
-        {0.52f, 0.38f, 0.16f},     // 22 WOODEN_SHOVEL
-        {0.50f, 0.50f, 0.52f},     // 23 STONE_PICKAXE
-        {0.48f, 0.48f, 0.50f},     // 24 STONE_AXE
-        {0.46f, 0.46f, 0.48f},     // 25 STONE_SHOVEL
-        {0.60f, 0.40f, 0.20f},     // 26 CHEST
-        {0.45f, 0.45f, 0.45f},     // 27 RAIL
-        {0.85f, 0.20f, 0.15f},     // 28 TNT
-        {0.55f, 0.35f, 0.15f},     // 29 BOAT
-        {0.50f, 0.50f, 0.55f},     // 30 MINECART
-        {0.45f, 0.45f, 0.45f},     // 31 FURNACE
-        {1.00f, 0.85f, 0.30f},     // 32 TORCH
-        {0.14f, 0.14f, 0.14f},     // 33 COAL (dark charcoal)
-        {0.78f, 0.76f, 0.74f},     // 34 IRON_INGOT
-        {0.82f, 0.90f, 0.94f},     // 35 GLASS
-        {0.78f, 0.51f, 0.31f},     // 36 COOKED_PORKCHOP
-        {0.86f, 0.15f, 0.15f},     // 37 RED_FLOWER
-        {1.00f, 0.90f, 0.20f},     // 38 YELLOW_FLOWER
-        {0.50f, 0.90f, 1.00f},     // 39 DIAMOND
-        {0.78f, 0.78f, 0.80f},     // 40 IRON_PICKAXE
-        {0.78f, 0.78f, 0.80f},     // 41 IRON_AXE
-        {0.78f, 0.78f, 0.80f},     // 42 IRON_SHOVEL
-        {0.78f, 0.78f, 0.80f},     // 43 IRON_SWORD
-        {0.60f, 0.45f, 0.22f},     // 44 WOODEN_SWORD
-        {0.50f, 0.50f, 0.52f},     // 45 STONE_SWORD
-        {0.22f, 0.16f, 0.10f},     // 46 CHARCOAL
-        {0.90f, 0.75f, 0.20f},     // 47 GOLD_INGOT
-        {0.55f, 0.45f, 0.35f},     // 48 POWERED_RAIL
-        {0.70f, 0.10f, 0.05f},     // 49 REDSTONE
-        {0.70f, 0.10f, 0.05f},     // 50 REDSTONE_WIRE
-        {0.70f, 0.15f, 0.10f},     // 51 REDSTONE_TORCH
-        {0.60f, 0.15f, 0.10f},     // 52 REDSTONE_REPEATER
-        {0.50f, 0.35f, 0.35f},     // 53 REDSTONE_ORE
-    };
-
+    private TextureAtlas atlas;
     private Shader shader;
     private int vao, vbo;
 
     public void init() {
-        shader = new Shader("shaders/line.vert", "shaders/line.frag");
-        buildCube();
+        shader = new Shader("shaders/item_billboard.vert", "shaders/item_billboard.frag");
+        buildQuad();
     }
 
-    private void buildCube() {
+    /**
+     * Set the texture atlas for rendering item textures.
+     */
+    public void setAtlas(TextureAtlas atlas) {
+        this.atlas = atlas;
+    }
+
+    /**
+     * Build a unit quad for billboard rendering.
+     * Vertices are centered: x in [-0.5, 0.5], y in [0, 1] (grounded)
+     * Each vertex has position (x, y, z) and UV (u, v).
+     */
+    private void buildQuad() {
+        // Quad vertices: position (x, y, z) + UV (u, v)
+        // x: -0.5 to 0.5 (centered horizontally)
+        // y: 0 to 1 (bottom to top, grounded)
+        // z: 0 (flat billboard)
         float[] verts = {
-            // Front face (z=1)
-            0,0,1,  1,0,1,  1,1,1,  0,0,1,  1,1,1,  0,1,1,
-            // Back face (z=0)
-            1,0,0,  0,0,0,  0,1,0,  1,0,0,  0,1,0,  1,1,0,
-            // Top face (y=1)
-            0,1,1,  1,1,1,  1,1,0,  0,1,1,  1,1,0,  0,1,0,
-            // Bottom face (y=0)
-            0,0,0,  1,0,0,  1,0,1,  0,0,0,  1,0,1,  0,0,1,
-            // Right face (x=1)
-            1,0,1,  1,0,0,  1,1,0,  1,0,1,  1,1,0,  1,1,1,
-            // Left face (x=0)
-            0,0,0,  0,0,1,  0,1,1,  0,0,0,  0,1,1,  0,1,0,
+            // Triangle 1
+            -0.5f, 0.0f, 0.0f,  0.0f, 1.0f,  // bottom-left
+             0.5f, 0.0f, 0.0f,  1.0f, 1.0f,  // bottom-right
+             0.5f, 1.0f, 0.0f,  1.0f, 0.0f,  // top-right
+            // Triangle 2
+            -0.5f, 0.0f, 0.0f,  0.0f, 1.0f,  // bottom-left
+             0.5f, 1.0f, 0.0f,  1.0f, 0.0f,  // top-right
+            -0.5f, 1.0f, 0.0f,  0.0f, 0.0f,  // top-left
         };
 
         vao = glGenVertexArrays();
@@ -106,66 +65,110 @@ public class ItemEntityRenderer {
             glBufferData(GL_ARRAY_BUFFER, fb, GL_STATIC_DRAW);
         }
 
-        glVertexAttribPointer(0, 3, GL_FLOAT, false, 3 * Float.BYTES, 0);
+        int stride = 5 * Float.BYTES;
+        // Position attribute (location 0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
         glEnableVertexAttribArray(0);
+        // UV attribute (location 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3 * Float.BYTES);
+        glEnableVertexAttribArray(1);
+
         glBindVertexArray(0);
     }
 
     /**
-     * Render all item entities.
+     * Render all item entities as textured billboards.
      */
     public void render(Camera camera, int windowW, int windowH, List<ItemEntity> itemList) {
         if (itemList == null || itemList.isEmpty()) return;
+        if (atlas == null) return; // Can't render without atlas
 
         Matrix4f projection = camera.getProjectionMatrix(windowW, windowH);
-        Matrix4f cameraView = camera.getViewMatrix();
+        Matrix4f view = camera.getViewMatrix();
 
         shader.bind();
         shader.setMat4("uProjection", projection);
+        shader.setMat4("uView", view);
+
+        // Bind atlas texture
+        glActiveTexture(GL_TEXTURE0);
+        atlas.bind(0);
+        shader.setInt("uAtlas", 0);
 
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // Disable backface culling so billboard is visible from both sides
+        glDisable(GL_CULL_FACE);
 
         glBindVertexArray(vao);
 
-        float s = ItemEntity.SIZE;
-        float halfS = s / 2.0f;
+        float size = ItemEntity.SIZE;
 
         for (ItemEntity item : itemList) {
             if (item.isDead()) continue;
 
-            Matrix4f view = new Matrix4f(cameraView);
-            view.translate(item.getX() - halfS, item.getY() - halfS, item.getZ() - halfS);
-
-            // Rotate around center
-            view.translate(halfS, halfS, halfS);
-            view.rotateY((float) Math.toRadians(item.getRotation()));
-            view.translate(-halfS, -halfS, -halfS);
-
-            // Scale
-            view.scale(s, s, s);
-
-            shader.setMat4("uView", view);
-
-            // Color based on block type
             int blockId = item.getBlockId();
-            float r = 0.5f, g = 0.5f, b = 0.5f;
-            if (blockId >= 0 && blockId < BLOCK_COLORS.length) {
-                r = BLOCK_COLORS[blockId][0];
-                g = BLOCK_COLORS[blockId][1];
-                b = BLOCK_COLORS[blockId][2];
-            }
+            Block block = Blocks.get(blockId);
+            int tileIndex = block.getTextureIndex(0);
+            
+            if (tileIndex < 0) continue; // Skip invalid textures
 
-            float pulse = 1.0f + 0.1f * (float) Math.sin(item.getAge() * 4.0f);
-            shader.setVec4("uColor", r * pulse, g * pulse, b * pulse, 1.0f);
+            // Get UV coordinates from atlas
+            float[] uv = atlas.getUV(tileIndex);
+            
+            // Set item position (use item center, slightly offset up)
+            shader.setVec3("uItemPos", item.getX(), item.getY(), item.getZ());
+            shader.setFloat("uSize", size);
+            shader.setFloat("uRotation", (float) Math.toRadians(item.getRotation()));
 
-            glDrawArrays(GL_TRIANGLES, 0, 36);
+            // Calculate pulsing brightness
+            float pulse = 0.5f + 0.5f * (float) Math.sin(item.getAge() * 4.0f);
+            shader.setFloat("uBrightness", pulse);
+
+            // Override UVs in the shader by modifying the quad's UV lookup
+            // We need to transform UVs: the quad uses 0-1, we need u0-u1 and v0-v1
+            // Set the UV rect as uniforms
+            setAtlasUVs(uv);
+
+            glDrawArrays(GL_TRIANGLES, 0, 6);
         }
 
         glBindVertexArray(0);
+        glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         shader.unbind();
+    }
+
+    /**
+     * Dynamically update the quad's UVs for the current item's texture.
+     * Since we can't easily modify UVs per-draw, we use a different approach:
+     * Rebuild the VBO with the correct UVs for each item.
+     * 
+     * Note: For better performance, batch rendering could be implemented later.
+     */
+    private void setAtlasUVs(float[] uv) {
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+        
+        // Rebuild quad with atlas UVs
+        float[] verts = {
+            // Triangle 1
+            -0.5f, 0.0f, 0.0f,  u0, v1,  // bottom-left
+             0.5f, 0.0f, 0.0f,  u1, v1,  // bottom-right
+             0.5f, 1.0f, 0.0f,  u1, v0,  // top-right
+            // Triangle 2
+            -0.5f, 0.0f, 0.0f,  u0, v1,  // bottom-left
+             0.5f, 1.0f, 0.0f,  u1, v0,  // top-right
+            -0.5f, 1.0f, 0.0f,  u0, v0,  // top-left
+        };
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        try (MemoryStack stk = MemoryStack.stackPush()) {
+            FloatBuffer fb = stk.mallocFloat(verts.length);
+            fb.put(verts).flip();
+            glBufferSubData(GL_ARRAY_BUFFER, 0, fb);
+        }
     }
 
     public void cleanup() {
