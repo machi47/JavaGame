@@ -43,15 +43,15 @@ public final class Blocks {
     public static final Block CRAFTING_TABLE = new Block(18, "crafting_table", true,  false, new int[]{20, 20, 21, 21, 21, 21}, 2.5f, -1);
 
     // ---- Crafting material items (non-solid, non-placeable) ----
-    public static final Block STICK          = new Block(19, "stick",          false, true,  new int[]{57},                 0.0f, -1);  // item sprite
+    public static final Block STICK          = new Block(19, "stick",          false, true,  new int[]{100},                0.0f, -1);  // stick sprite
 
     // ---- Tool items (non-solid, non-placeable) ----
-    public static final Block WOODEN_PICKAXE = new Block(20, "wooden_pickaxe", false, true, new int[]{48},                 0.0f, -1);  // item sprite
-    public static final Block WOODEN_AXE     = new Block(21, "wooden_axe",     false, true, new int[]{49},                 0.0f, -1);  // item sprite
-    public static final Block WOODEN_SHOVEL  = new Block(22, "wooden_shovel",  false, true, new int[]{50},                 0.0f, -1);  // item sprite
-    public static final Block STONE_PICKAXE  = new Block(23, "stone_pickaxe",  false, true, new int[]{48},                 0.0f, -1);  // wood pick sprite
-    public static final Block STONE_AXE      = new Block(24, "stone_axe",      false, true, new int[]{49},                 0.0f, -1);  // wood axe sprite
-    public static final Block STONE_SHOVEL   = new Block(25, "stone_shovel",   false, true, new int[]{50},                 0.0f, -1);  // wood shovel sprite
+    public static final Block WOODEN_PICKAXE = new Block(20, "wooden_pickaxe", false, true, new int[]{64},                 0.0f, -1);  // wooden pickaxe
+    public static final Block WOODEN_AXE     = new Block(21, "wooden_axe",     false, true, new int[]{65},                 0.0f, -1);  // wooden axe
+    public static final Block WOODEN_SHOVEL  = new Block(22, "wooden_shovel",  false, true, new int[]{66},                 0.0f, -1);  // wooden shovel
+    public static final Block STONE_PICKAXE  = new Block(23, "stone_pickaxe",  false, true, new int[]{68},                 0.0f, -1);  // stone pickaxe
+    public static final Block STONE_AXE      = new Block(24, "stone_axe",      false, true, new int[]{69},                 0.0f, -1);  // stone axe
+    public static final Block STONE_SHOVEL   = new Block(25, "stone_shovel",   false, true, new int[]{70},                 0.0f, -1);  // stone shovel
 
     // ---- Advanced feature blocks ----
     public static final Block CHEST          = new Block(26, "chest",          true,  false, new int[]{22, 22, 23, 23, 23, 23}, 2.5f, -1);
@@ -59,8 +59,8 @@ public final class Blocks {
     public static final Block TNT            = new Block(28, "tnt",            true,  false, new int[]{25, 25, 26, 26, 26, 26}, 0.0f,  0);  // instant break, drops nothing (activates instead)
 
     // ---- Advanced feature items (non-solid, non-placeable) ----
-    public static final Block BOAT_ITEM      = new Block(29, "boat",           false, true,  new int[]{56},                 0.0f, -1);  // item sprite
-    public static final Block MINECART_ITEM  = new Block(30, "minecart",       false, true,  new int[]{56},                 0.0f, -1);  // item sprite
+    public static final Block BOAT_ITEM      = new Block(29, "boat",           false, true,  new int[]{100},                0.0f, -1);  // stick (placeholder)
+    public static final Block MINECART_ITEM  = new Block(30, "minecart",       false, true,  new int[]{32},                 0.0f, -1);  // iron_ingot
 
     // ---- InfDev 611 blocks/items ----
 
@@ -90,14 +90,14 @@ public final class Blocks {
     public static final Block DIAMOND        = new Block(39, "diamond",        false, true,  new int[]{37},                 0.0f, -1);
 
     // Iron tools
-    public static final Block IRON_PICKAXE   = new Block(40, "iron_pickaxe",   false, true,  new int[]{51},                 0.0f, -1);  // item sprite
-    public static final Block IRON_AXE       = new Block(41, "iron_axe",       false, true,  new int[]{52},                 0.0f, -1);  // item sprite
-    public static final Block IRON_SHOVEL    = new Block(42, "iron_shovel",    false, true,  new int[]{53},                 0.0f, -1);  // item sprite
-    public static final Block IRON_SWORD     = new Block(43, "iron_sword",     false, true,  new int[]{54},                 0.0f, -1);  // item sprite
+    public static final Block IRON_PICKAXE   = new Block(40, "iron_pickaxe",   false, true,  new int[]{72},                 0.0f, -1);  // iron pickaxe
+    public static final Block IRON_AXE       = new Block(41, "iron_axe",       false, true,  new int[]{73},                 0.0f, -1);  // iron axe
+    public static final Block IRON_SHOVEL    = new Block(42, "iron_shovel",    false, true,  new int[]{74},                 0.0f, -1);  // iron shovel
+    public static final Block IRON_SWORD     = new Block(43, "iron_sword",     false, true,  new int[]{75},                 0.0f, -1);  // iron sword
 
     // Wooden/stone swords
-    public static final Block WOODEN_SWORD   = new Block(44, "wooden_sword",   false, true,  new int[]{54},                 0.0f, -1);  // sword sprite
-    public static final Block STONE_SWORD    = new Block(45, "stone_sword",    false, true,  new int[]{54},                 0.0f, -1);  // sword sprite
+    public static final Block WOODEN_SWORD   = new Block(44, "wooden_sword",   false, true,  new int[]{67},                 0.0f, -1);  // wooden sword
+    public static final Block STONE_SWORD    = new Block(45, "stone_sword",    false, true,  new int[]{71},                 0.0f, -1);  // stone sword
 
     // Charcoal (fuel, from smelting logs)
     public static final Block CHARCOAL       = new Block(46, "charcoal",       false, true,  new int[]{38},                 0.0f, -1);
@@ -225,26 +225,26 @@ public final class Blocks {
 
 
 
-    // ---- Stub blocks (from other agent refs) ----
-    public static final Block LEATHER_HELMET       = new Block(98, "leather_helmet", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block LEATHER_CHESTPLATE   = new Block(99, "leather_chestplate", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block LEATHER_LEGGINGS     = new Block(100, "leather_leggings", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block LEATHER_BOOTS        = new Block(101, "leather_boots", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block IRON_HELMET          = new Block(102, "iron_helmet", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block IRON_CHESTPLATE      = new Block(103, "iron_chestplate", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block IRON_LEGGINGS        = new Block(104, "iron_leggings", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block IRON_BOOTS           = new Block(105, "iron_boots", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block DIAMOND_HELMET       = new Block(106, "diamond_helmet", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block DIAMOND_CHESTPLATE   = new Block(107, "diamond_chestplate", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block DIAMOND_LEGGINGS     = new Block(108, "diamond_leggings", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block DIAMOND_BOOTS        = new Block(109, "diamond_boots", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block GOLD_HELMET          = new Block(110, "gold_helmet", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block GOLD_CHESTPLATE      = new Block(111, "gold_chestplate", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block GOLD_LEGGINGS        = new Block(112, "gold_leggings", false, true, new int[]{55}, 0.0f, -1);  // item sprite
-    public static final Block GOLD_BOOTS           = new Block(113, "gold_boots", false, true, new int[]{55}, 0.0f, -1);  // item sprite
+    // ---- Armor items ----
+    public static final Block LEATHER_HELMET       = new Block(98, "leather_helmet", false, true, new int[]{84}, 0.0f, -1);  // leather helmet
+    public static final Block LEATHER_CHESTPLATE   = new Block(99, "leather_chestplate", false, true, new int[]{85}, 0.0f, -1);  // leather chestplate
+    public static final Block LEATHER_LEGGINGS     = new Block(100, "leather_leggings", false, true, new int[]{86}, 0.0f, -1);  // leather leggings
+    public static final Block LEATHER_BOOTS        = new Block(101, "leather_boots", false, true, new int[]{87}, 0.0f, -1);  // leather boots
+    public static final Block IRON_HELMET          = new Block(102, "iron_helmet", false, true, new int[]{88}, 0.0f, -1);  // iron helmet
+    public static final Block IRON_CHESTPLATE      = new Block(103, "iron_chestplate", false, true, new int[]{89}, 0.0f, -1);  // iron chestplate
+    public static final Block IRON_LEGGINGS        = new Block(104, "iron_leggings", false, true, new int[]{90}, 0.0f, -1);  // iron leggings
+    public static final Block IRON_BOOTS           = new Block(105, "iron_boots", false, true, new int[]{91}, 0.0f, -1);  // iron boots
+    public static final Block DIAMOND_HELMET       = new Block(106, "diamond_helmet", false, true, new int[]{92}, 0.0f, -1);  // diamond helmet
+    public static final Block DIAMOND_CHESTPLATE   = new Block(107, "diamond_chestplate", false, true, new int[]{93}, 0.0f, -1);  // diamond chestplate
+    public static final Block DIAMOND_LEGGINGS     = new Block(108, "diamond_leggings", false, true, new int[]{94}, 0.0f, -1);  // diamond leggings
+    public static final Block DIAMOND_BOOTS        = new Block(109, "diamond_boots", false, true, new int[]{95}, 0.0f, -1);  // diamond boots
+    public static final Block GOLD_HELMET          = new Block(110, "gold_helmet", false, true, new int[]{96}, 0.0f, -1);  // gold helmet
+    public static final Block GOLD_CHESTPLATE      = new Block(111, "gold_chestplate", false, true, new int[]{97}, 0.0f, -1);  // gold chestplate
+    public static final Block GOLD_LEGGINGS        = new Block(112, "gold_leggings", false, true, new int[]{98}, 0.0f, -1);  // gold leggings
+    public static final Block GOLD_BOOTS           = new Block(113, "gold_boots", false, true, new int[]{99}, 0.0f, -1);  // gold boots
     // Farmland: tilled dirt, solid, texture 48 (top=tilled, sides/bottom=dirt)
     public static final Block FARMLAND             = new Block(114, "farmland", true, false, new int[]{48, 3, 3, 3, 3, 3}, 0.6f, 3); // drops dirt
-    public static final Block SUGAR_CANE           = new Block(115, "sugar_cane", false, true, new int[]{58}, 0.0f, -1);  // item sprite
+    public static final Block SUGAR_CANE           = new Block(115, "sugar_cane", false, true, new int[]{58}, 0.0f, -1);  // wheat seeds (placeholder)
     // Wheat crops: stages 0-7, non-solid transparent, cross-billboard rendered, instant break
     // Drops are handled specially in GameLoop (not via dropId)
     public static final Block WHEAT_CROP_0         = new Block(116, "wheat_crop_0", false, true, new int[]{49}, 0.0f, 0);
@@ -255,17 +255,17 @@ public final class Blocks {
     public static final Block WHEAT_CROP_5         = new Block(121, "wheat_crop_5", false, true, new int[]{54}, 0.0f, 0);
     public static final Block WHEAT_CROP_6         = new Block(122, "wheat_crop_6", false, true, new int[]{55}, 0.0f, 0);
     public static final Block WHEAT_CROP_7         = new Block(123, "wheat_crop_7", false, true, new int[]{56}, 0.0f, 0);
-    public static final Block LEATHER              = new Block(124, "leather", false, true, new int[]{55}, 0.0f, -1);  // item sprite
+    public static final Block LEATHER              = new Block(124, "leather", false, true, new int[]{100}, 0.0f, -1);  // stick (placeholder)
     public static final Block RAW_BEEF             = new Block(125, "raw_beef", false, true, new int[]{17}, 0.0f, -1);  // raw_porkchop (keep)
     public static final Block COOKED_BEEF          = new Block(126, "cooked_beef", false, true, new int[]{34}, 0.0f, -1);  // cooked_porkchop (keep)
-    public static final Block WOOL                 = new Block(127, "wool", true, false, new int[]{59}, 0.8f, -1);  // item sprite
-    public static final Block FEATHER              = new Block(128, "feather", false, true, new int[]{58}, 0.0f, -1);  // item sprite
+    public static final Block WOOL                 = new Block(127, "wool", true, false, new int[]{6}, 0.8f, -1);  // sand (off-white block)
+    public static final Block FEATHER              = new Block(128, "feather", false, true, new int[]{58}, 0.0f, -1);  // wheat seeds (placeholder)
     public static final Block RAW_CHICKEN          = new Block(129, "raw_chicken", false, true, new int[]{17}, 0.0f, -1);  // raw_porkchop (reuse)
     public static final Block COOKED_CHICKEN       = new Block(130, "cooked_chicken", false, true, new int[]{34}, 0.0f, -1);  // cooked_porkchop (reuse)
-    public static final Block STRING               = new Block(131, "string", false, true, new int[]{58}, 0.0f, -1);  // item sprite
-    public static final Block FLINT                = new Block(132, "flint", false, true, new int[]{59}, 0.0f, -1);  // item sprite
-    public static final Block BOW                  = new Block(133, "bow", false, true, new int[]{56}, 0.0f, -1);  // item sprite
-    public static final Block ARROW_ITEM           = new Block(134, "arrow", false, true, new int[]{57}, 0.0f, -1);  // item sprite
+    public static final Block STRING               = new Block(131, "string", false, true, new int[]{6}, 0.0f, -1);  // sand (off-white)
+    public static final Block FLINT                = new Block(132, "flint", false, true, new int[]{7}, 0.0f, -1);  // gravel
+    public static final Block BOW                  = new Block(133, "bow", false, true, new int[]{101}, 0.0f, -1);  // bow sprite
+    public static final Block ARROW_ITEM           = new Block(134, "arrow", false, true, new int[]{102}, 0.0f, -1);  // arrow sprite
 
     // ---- Farming items ----
     public static final Block WOODEN_HOE           = new Block(135, "wooden_hoe", false, true, new int[]{57}, 0.0f, -1);
