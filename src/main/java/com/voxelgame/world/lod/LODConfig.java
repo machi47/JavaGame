@@ -10,14 +10,14 @@ public class LODConfig {
 
     // ---- Distance thresholds (in chunks) ----
 
-    /** Distance where LOD 1 starts (full-detail radius). Default: 8 */
-    private volatile int lodThreshold = 8;
+    /** Distance where LOD 1 starts (full-detail radius). Increased for earlier transitions. */
+    private volatile int lodThreshold = 12;
 
     /** Distance where LOD 2 starts. Computed from threshold. */
-    private volatile int lod2Start = 12;
+    private volatile int lod2Start = 16;
 
     /** Distance where LOD 3 starts. Computed from threshold. */
-    private volatile int lod3Start = 16;
+    private volatile int lod3Start = 20;
 
     /** Maximum render distance (LOD 3 extends to this). Default: 20 */
     private volatile int maxRenderDistance = 20;
@@ -46,11 +46,11 @@ public class LODConfig {
     /** Max chunk generations per frame for LOD 2-3 (distant chunks). */
     public static final int MAX_FAR_GEN_PER_FRAME = 6;
 
-    /** Max mesh uploads per frame (GPU operations). */
-    public static final int MAX_MESH_UPLOADS_PER_FRAME = 6;
+    /** Max mesh uploads per frame (GPU operations). Increased for faster loading. */
+    public static final int MAX_MESH_UPLOADS_PER_FRAME = 12;
 
     /** Max LOD mesh uploads per frame (separate budget for distant). */
-    public static final int MAX_LOD_UPLOADS_PER_FRAME = 8;
+    public static final int MAX_LOD_UPLOADS_PER_FRAME = 16;
 
     /** Generation thread pool size. */
     public static final int GEN_THREAD_COUNT = 4;

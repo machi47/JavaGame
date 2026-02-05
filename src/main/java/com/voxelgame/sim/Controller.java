@@ -19,7 +19,8 @@ import static org.lwjgl.glfw.GLFW.*;
  *                Physics handles gravity & integration.
  *
  * Movement polish:
- * - Left Shift = sprint (1.5× speed)
+ * - Walk mode: Ctrl + W = sprint (1.5× speed)
+ * - Fly mode: Ctrl = sprint boost (2.5× speed), Space = ascend, Shift = descend
  * - Smooth acceleration/deceleration via friction
  * - Reduced air control when airborne
  * - Auto step-up for ≤0.5 block ledges
@@ -349,11 +350,18 @@ public class Controller {
 
     /**
      * Fly mode: move directly along camera vectors. No physics.
+     * Controls:
+     * - WASD: horizontal movement
+     * - Space: ascend
+     * - Shift: descend
+     * - Ctrl: sprint boost (2.5x speed)
      */
     private void handleFlyMovement(float dt, Vector3f front, Vector3f right) {
         Vector3f pos = player.getPosition();
         float speed = FLY_SPEED;
-        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) || agentSprinting) {
+        
+        // Sprint boost (Ctrl key, not Shift)
+        if (Input.isKeyDown(GLFW_KEY_LEFT_CONTROL) || agentSprinting) {
             speed *= 2.5f;
         }
 
@@ -363,8 +371,8 @@ public class Controller {
         if (Input.isKeyDown(GLFW_KEY_S)) { moveX -= front.x; moveY -= front.y; moveZ -= front.z; }
         if (Input.isKeyDown(GLFW_KEY_A)) { moveX -= right.x; moveY -= right.y; moveZ -= right.z; }
         if (Input.isKeyDown(GLFW_KEY_D)) { moveX += right.x; moveY += right.y; moveZ += right.z; }
-        if (Input.isKeyDown(GLFW_KEY_SPACE))        moveY += 1.0f;
-        if (Input.isKeyDown(GLFW_KEY_LEFT_CONTROL)) moveY -= 1.0f;
+        if (Input.isKeyDown(GLFW_KEY_SPACE))      moveY += 1.0f;  // Ascend
+        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) moveY -= 1.0f;  // Descend (was Ctrl)
 
         // Add agent movement in fly mode
         if (agentMoveForward != 0) {
@@ -410,8 +418,8 @@ public class Controller {
         Vector3f flatRight = new Vector3f(right.x, 0, right.z);
         if (flatRight.lengthSquared() > 0.001f) flatRight.normalize();
 
-        // Sprint (keyboard OR agent)
-        sprinting = (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT) && Input.isKeyDown(GLFW_KEY_W))
+        // Sprint (Ctrl + W, OR agent command)
+        sprinting = (Input.isKeyDown(GLFW_KEY_LEFT_CONTROL) && Input.isKeyDown(GLFW_KEY_W))
                     || (agentSprinting && agentMoveForward > 0);
         float speed = WALK_SPEED;
         if (sprinting) speed *= SPRINT_MULTIPLIER;
@@ -564,6 +572,12 @@ public class Controller {
             } else {
                 System.out.println("Fly mode not available in " + player.getGameMode() + " mode");
             }
+        }
+
+        // N = toggle noclip (requires fly mode)
+        if (Input.isKeyPressed(GLFW_KEY_N)) {
+            player.toggleNoclipMode();
+            System.out.println("Noclip mode: " + (player.isNoclipMode() ? "ON" : "OFF"));
         }
 
         // F4 = cycle game mode (Creative ↔ Survival)

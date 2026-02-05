@@ -27,20 +27,26 @@ void main() {
     vec3 worldNormal = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
 
     // Directional sunlight: N·L calculation
-    // Only applies to sky-lit blocks (blocks in shadow/caves don't get direct sun)
     float NdotL = max(dot(worldNormal, uSunDirection), 0.0);
-    float directionalLight = NdotL * uSunIntensity * vSkyLight;
-
-    // Ambient light from sky (fills shadows, varies with time of day)
-    // Reduced from vSkyLight * uSunBrightness to make directional more prominent
-    float ambientSky = vSkyLight * uSunBrightness * 0.4;
-
+    
+    // Base ambient light (low - fills shadows but doesn't wash out)
+    // During midday: 0.25 ambient, during night: 0.05 ambient
+    float ambientBase = uSunBrightness * 0.25;
+    
+    // Directional contribution (strong, but only where sun hits)
+    // Creates clear distinction between sun-facing and shadowed faces
+    float directionalContribution = NdotL * uSunIntensity * 0.75;
+    
+    // Sky-lit surfaces get ambient + directional (modulated by vSkyLight)
+    // Surfaces in caves/shadow (vSkyLight=0) don't get any sun contribution
+    float skyLitBrightness = ambientBase + directionalContribution;
+    float skyLight = vSkyLight * skyLitBrightness;
+    
     // Block light (torches etc) is constant regardless of time
     float blockLight = vBlockLight;
-
-    // Combine lighting components
-    // Directional contributes more during day, ambient fills shadows
-    float totalLight = max(max(directionalLight + ambientSky, blockLight), MIN_AMBIENT);
+    
+    // Take the maximum of sky light and block light (not additive)
+    float totalLight = max(max(skyLight, blockLight), MIN_AMBIENT);
 
     // Slight blue tint at night for moonlight atmosphere
     vec3 tintedLight = vec3(totalLight);

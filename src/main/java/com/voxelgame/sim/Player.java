@@ -28,7 +28,8 @@ public class Player {
 
     private final Camera camera;
     private final Vector3f velocity = new Vector3f();
-    private boolean flyMode = false;  // start in walk mode with physics/collision
+    private boolean flyMode = false;  // 3D movement (flight)
+    private boolean noclipMode = false;  // pass through blocks (requires fly mode)
     private boolean onGround = false;
 
     /** Player inventory (9 hotbar + 27 storage). */
@@ -132,6 +133,16 @@ public class Player {
         // Zero velocity on mode switch to prevent jarring movement
         velocity.set(0);
         if (flyMode) resetFallTracking();
+        // Disable noclip when disabling fly
+        if (!flyMode) noclipMode = false;
+    }
+
+    public boolean isNoclipMode() { return noclipMode; }
+
+    public void toggleNoclipMode() {
+        // Noclip requires fly mode to be enabled
+        if (!flyMode) return;
+        this.noclipMode = !this.noclipMode;
     }
 
     // --- Ground state ---
