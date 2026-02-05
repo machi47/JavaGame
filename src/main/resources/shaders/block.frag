@@ -29,13 +29,13 @@ void main() {
     // Directional sunlight: N·L calculation
     float NdotL = max(dot(worldNormal, uSunDirection), 0.0);
     
-    // Base ambient light (low - fills shadows but doesn't wash out)
-    // During midday: 0.25 ambient, during night: 0.05 ambient
-    float ambientBase = uSunBrightness * 0.25;
+    // Base ambient light (very low - just enough to see in shade)
+    // During midday: 0.15 ambient, during night: 0.03 ambient  
+    float ambientBase = uSunBrightness * 0.15;
     
-    // Directional contribution (strong, but only where sun hits)
-    // Creates clear distinction between sun-facing and shadowed faces
-    float directionalContribution = NdotL * uSunIntensity * 0.75;
+    // Directional contribution (moderate, creates clear face distinction)
+    // Max total brightness during midday: 0.15 + 0.45 = 0.6 (prevents overexposure)
+    float directionalContribution = NdotL * uSunIntensity * 0.45;
     
     // Sky-lit surfaces get ambient + directional (modulated by vSkyLight)
     // Surfaces in caves/shadow (vSkyLight=0) don't get any sun contribution

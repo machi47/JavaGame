@@ -5,6 +5,7 @@ import com.voxelgame.platform.Input;
 import com.voxelgame.render.Camera;
 import com.voxelgame.ui.CreativeInventoryScreen;
 import com.voxelgame.ui.InventoryScreen;
+import com.voxelgame.world.World;
 import org.joml.Vector3f;
 
 import static org.lwjgl.glfw.GLFW.*;
@@ -58,6 +59,7 @@ public class Controller {
     private static final float AIR_ACCEL         = 12.0f;
 
     private final Player player;
+    private final World world;
     private boolean sprinting = false;
 
     // Agent interface
@@ -86,8 +88,9 @@ public class Controller {
     // ---- Item dropping ----
     private ItemEntityManager itemEntityManager = null;
 
-    public Controller(Player player) {
+    public Controller(Player player, World world) {
         this.player = player;
+        this.world = world;
     }
 
     /** Set the agent action queue. Null to disable. */
@@ -349,7 +352,10 @@ public class Controller {
     }
 
     /**
-     * Fly mode: move directly along camera vectors. No physics.
+     * Fly mode: move directly along camera vectors.
+     * With noclip OFF: applies collision (can't go through blocks)
+     * With noclip ON: free movement (pass through everything)
+     * 
      * Controls:
      * - WASD: horizontal movement
      * - Space: ascend
@@ -358,6 +364,7 @@ public class Controller {
      */
     private void handleFlyMovement(float dt, Vector3f front, Vector3f right) {
         Vector3f pos = player.getPosition();
+        Vector3f vel = player.getVelocity();
         float speed = FLY_SPEED;
         
         // Sprint boost (Ctrl key, not Shift)
@@ -372,7 +379,7 @@ public class Controller {
         if (Input.isKeyDown(GLFW_KEY_A)) { moveX -= right.x; moveY -= right.y; moveZ -= right.z; }
         if (Input.isKeyDown(GLFW_KEY_D)) { moveX += right.x; moveY += right.y; moveZ += right.z; }
         if (Input.isKeyDown(GLFW_KEY_SPACE))      moveY += 1.0f;  // Ascend
-        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) moveY -= 1.0f;  // Descend (was Ctrl)
+        if (Input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) moveY -= 1.0f;  // Descend
 
         // Add agent movement in fly mode
         if (agentMoveForward != 0) {
@@ -389,13 +396,31 @@ public class Controller {
         float len = (float) Math.sqrt(moveX * moveX + moveY * moveY + moveZ * moveZ);
         if (len > 0.001f) {
             float inv = 1.0f / len;
-            pos.x += moveX * inv * speed * dt;
-            pos.y += moveY * inv * speed * dt;
-            pos.z += moveZ * inv * speed * dt;
+            
+            if (player.isNoclipMode()) {
+                // Noclip: direct position modification (no collision)
+                pos.x += moveX * inv * speed * dt;
+                pos.y += moveY * inv * speed * dt;
+                pos.z += moveZ * inv * speed * dt;
+            } else {
+                // Fly without noclip: use velocity + collision
+                vel.x = moveX * inv * speed;
+                vel.y = moveY * inv * speed;
+                vel.z = moveZ * inv * speed;
+                
+                // Apply collision via standard system
+                if (world != null) {
+                    Collision.resolveMovement(pos, vel, dt, world, player);
+                } else {
+                    pos.x += vel.x * dt;
+                    pos.y += vel.y * dt;
+                    pos.z += vel.z * dt;
+                }
+            }
         }
 
-        // Fly mode doesn't use velocity
-        player.getVelocity().set(0);
+        // Zero velocity after movement (fly mode is direct control)
+        vel.set(0);
         sprinting = false;
     }
 

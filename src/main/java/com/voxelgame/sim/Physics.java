@@ -82,8 +82,12 @@ public class Physics {
             return;
         }
         
-        // Fly mode (without noclip): still apply physics but modified
-        // (less gravity, different movement feel)
+        // Fly mode: skip physics entirely (Controller handles movement directly)
+        if (player.isFlyMode()) {
+            player.resetFallTracking();
+            player.setInWater(false);
+            return;
+        }
 
         Vector3f pos = player.getPosition();
         Vector3f vel = player.getVelocity();

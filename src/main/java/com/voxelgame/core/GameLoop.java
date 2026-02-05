@@ -407,10 +407,9 @@ public class GameLoop {
         saveManager = new SaveManager(folderName);
 
         player = new Player();
-        controller = new Controller(player);
-        physics = new Physics();
-
         world = new World();
+        controller = new Controller(player, world);
+        physics = new Physics();
         physics.setWorld(world);
         renderer = new Renderer(world);
         renderer.init();
