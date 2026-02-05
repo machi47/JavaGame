@@ -32,3 +32,8 @@ desktop.ini
 logs/
 saves/
 crash-reports/
+
+# Local test/demo scripts
+.local-scripts/
+*.py
+demo-script.txt
