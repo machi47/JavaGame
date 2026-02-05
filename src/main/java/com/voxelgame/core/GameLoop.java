@@ -867,6 +867,9 @@ public class GameLoop {
 
     private void updateAndRenderGame(int w, int h, float dt) {
         if (!gameInitialized) return;
+        
+        Profiler profiler = Profiler.getInstance();
+        profiler.begin("Frame");
 
         // Handle ESC → close screens or pause
         if (Input.isKeyPressed(GLFW_KEY_ESCAPE)) {
@@ -917,9 +920,17 @@ public class GameLoop {
         boolean wasDead = player.isDead();
 
         // Update game
+        profiler.begin("Input/Controller");
         controller.update(dt);
+        profiler.end("Input/Controller");
+        
+        profiler.begin("Physics");
         physics.step(player, dt);
+        profiler.end("Physics");
+        
+        profiler.begin("ChunkManager");
         chunkManager.update(player);
+        profiler.end("ChunkManager");
 
         // Detect death transition
         if (player.isDead() && !wasDead) {
@@ -930,11 +941,14 @@ public class GameLoop {
         }
 
         // Update entities
+        profiler.begin("Entities");
         itemEntityManager.update(dt, world, player, player.getInventory());
         entityManager.update(dt, world, player, itemEntityManager);
         mobSpawner.update(dt, world, player, entityManager, worldTime);
+        profiler.end("Entities");
 
         // Tick farming (random tick crop growth)
+        profiler.begin("Farming/Tile");
         if (farmingManager != null && world != null) {
             Set<ChunkPos> farmDirty = farmingManager.update(dt, world,
                 player.getPosition().x, player.getPosition().z);
@@ -951,6 +965,7 @@ public class GameLoop {
                 furnaceManager.tickAll();
             }
         }
+        profiler.end("Farming/Tile");
 
         // Process TNT chain reactions
         for (TNTEntity chain : TNTEntity.drainPendingChainTNT()) {
@@ -959,6 +974,7 @@ public class GameLoop {
         }
 
         // Raycast
+        profiler.begin("Raycast");
         boolean anyScreenOpen = controller.isInventoryOpen()
             || (chestScreen != null && chestScreen.isOpen())
             || (furnaceScreen != null && furnaceScreen.isOpen())
@@ -967,8 +983,12 @@ public class GameLoop {
             currentHit = Raycast.cast(
                 world, player.getCamera().getPosition(), player.getCamera().getFront(), 8.0f
             );
+            profiler.end("Raycast");
+            profiler.begin("BlockInteract");
             handleBlockInteraction(dt);
+            profiler.end("BlockInteract");
         } else {
+            profiler.end("Raycast");
             currentHit = null;
             controller.resetBreaking();
             hud.setBreakProgress(0);
@@ -1059,7 +1079,9 @@ public class GameLoop {
         }
 
         // Render
+        profiler.begin("Render");
         renderGameWorld(w, h, dt);
+        profiler.end("Render");
 
         // Screenshot (F2) — use framebuffer dimensions for glReadPixels
         if (Input.isKeyPressed(GLFW_KEY_F2)) {
@@ -1070,6 +1092,9 @@ public class GameLoop {
         if (autoTestMode) {
             updateAutoTest(w, h, dt);
         }
+        
+        profiler.end("Frame");
+        profiler.endFrame();
     }
 
     /**
@@ -1077,6 +1102,8 @@ public class GameLoop {
      */
     private void renderGameWorld(int w, int h, float dt) {
         if (!gameInitialized) return;
+        
+        Profiler profiler = Profiler.getInstance();
 
         // Update lighting state from world time
         if (worldTime != null) {
@@ -1111,18 +1138,26 @@ public class GameLoop {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         // Render sky gradient first (at far depth)
+        profiler.begin("Sky");
         if (skyRenderer != null && skyRenderer.isInitialized()) {
             skyRenderer.updateColors(worldTime);
             skyRenderer.render();
         }
+        profiler.end("Sky");
 
+        profiler.begin("World");
         renderer.render(player.getCamera(), fbW, fbH);
+        profiler.end("World");
 
         // Item entities
+        profiler.begin("ItemEntities");
         itemEntityRenderer.render(player.getCamera(), w, h, itemEntityManager.getItems());
+        profiler.end("ItemEntities");
 
         // Mob entities
+        profiler.begin("MobEntities");
         entityRenderer.render(player.getCamera(), w, h, entityManager.getEntities());
+        profiler.end("MobEntities");
 
         // Block highlight
         if (currentHit != null) {
@@ -1131,12 +1166,14 @@ public class GameLoop {
         }
 
         // End PostFX capture and apply effects (SSAO + tone mapping)
+        profiler.begin("PostFX");
         if (usePostFX) {
             org.joml.Matrix4f projection = player.getCamera().getProjectionMatrix(fbW, fbH);
             org.joml.Matrix4f view = player.getCamera().getViewMatrix();
             postFX.endSceneAndApplyEffects(projection, view);
             GLInit.setViewport(fbW, fbH); // restore viewport after PostFX
         }
+        profiler.end("PostFX");
 
         // 2D UI overlay
         glDisable(GL_DEPTH_TEST);
@@ -1144,11 +1181,13 @@ public class GameLoop {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDisable(GL_CULL_FACE);
 
+        profiler.begin("UI");
         hud.render(w, h, player);
         debugOverlay.render(player, world, time.getFps(), w, h, controller.isSprinting(),
                 itemEntityManager.getItemCount(), entityManager.getEntityCount(),
                 worldTime.getTimeString(), chunkManager,
                 renderer.getRenderedChunks(), renderer.getCulledChunks());
+        profiler.end("UI");
 
         if (inventoryScreen.isVisible()) {
             inventoryScreen.render(w, h, player.getInventory());
