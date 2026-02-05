@@ -11,16 +11,17 @@ import static org.lwjgl.opengl.GL33.*;
 
 /**
  * Texture atlas loaded from terrain.png.
- * 16x16 pixel tiles arranged in an 8×8 grid (128×128).
- * Hand-crafted pixel art with 90s high-contrast style.
+ * 16x16 pixel tiles arranged in an 8×16 grid (128×256).
+ * Rows 0-7: block textures (64 tiles)
+ * Rows 8-15: item sprites (64 tiles)
  */
 public class TextureAtlas {
 
     private static final int TILE_SIZE = 16;
     private static final int TILES_PER_ROW = 8;
-    private static final int TILE_COUNT = 64; // 8×8 grid
+    private static final int TILE_COUNT = 128; // 8×16 grid (expanded for items)
     private static final int ATLAS_WIDTH = TILES_PER_ROW * TILE_SIZE;  // 128
-    private static final int ATLAS_HEIGHT = ((TILE_COUNT + TILES_PER_ROW - 1) / TILES_PER_ROW) * TILE_SIZE;
+    private static final int ATLAS_HEIGHT = ((TILE_COUNT + TILES_PER_ROW - 1) / TILES_PER_ROW) * TILE_SIZE; // 256
 
     private int textureId;
 
