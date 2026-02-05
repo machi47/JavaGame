@@ -1008,21 +1008,28 @@ public class InventoryScreen {
             // Render with atlas texture
             float[] uv = atlas.getUV(tileIndex);
             
-            // Ensure proper GL state for textured rendering
+            // Position where the preview should appear
+            float px = sx + off;
+            float py = sy + off;
+            
+            // Switch to texture shader
             texShader.bind();
             glBindVertexArray(quadVao);
             
-            // Bind texture AFTER shader is bound
+            // Bind the atlas texture to texture unit 0
+            glActiveTexture(GL_TEXTURE0);
             atlas.bind(0);
             texShader.setInt("uTexture", 0);
             
             // Set UV rect (with V flip for correct orientation)
             texShader.setVec4("uUVRect", uv[0], uv[3], uv[2], uv[1]);
             
-            // Set projection matrix to position the quad on screen
+            // Set projection matrix using the same approach as fillRect
+            // The quad vertices are (0,0)-(1,1), we need to transform them to
+            // screen position (px, py) with size PREVIEW_SIZE
             setProjectionTex(new Matrix4f().ortho(
-                -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
-                -(sy + off) / PREVIEW_SIZE, (sh - sy - off) / PREVIEW_SIZE,
+                -px / PREVIEW_SIZE, (sw - px) / PREVIEW_SIZE,
+                -py / PREVIEW_SIZE, (sh - py) / PREVIEW_SIZE,
                 -1, 1));
             
             // Draw the textured quad
@@ -1030,7 +1037,7 @@ public class InventoryScreen {
             
             texShader.unbind();
             
-            // Re-bind uiShader for subsequent rendering (matches HUD.java pattern)
+            // Re-bind uiShader for subsequent rendering
             uiShader.bind();
             glBindVertexArray(quadVao);
         } else {

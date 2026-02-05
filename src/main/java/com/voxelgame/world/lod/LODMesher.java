@@ -14,6 +14,9 @@ import com.voxelgame.world.mesh.RawMeshResult;
  * LOD 2: Heightmap columns — one quad per surface column + side faces
  * LOD 3: Flat colored quad — single quad at average height with average color
  *
+ * All LOD levels now also generate transparent water meshes using the same
+ * voxel-step sampling. Water faces are emitted when neighbor is not water.
+ *
  * All methods are CPU-only (no GL calls). Safe for background threads.
  */
 public class LODMesher {
@@ -35,6 +38,7 @@ public class LODMesher {
     /**
      * Build mesh data for the given LOD level.
      * Returns a RawMeshResult (CPU-side only, no GL calls).
+     * Includes both opaque mesh and transparent water mesh.
      */
     public RawMeshResult meshForLOD(Chunk chunk, WorldAccess world, LODLevel level) {
         return switch (level) {

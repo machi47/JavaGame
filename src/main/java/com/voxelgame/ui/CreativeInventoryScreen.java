@@ -864,15 +864,22 @@ public class CreativeInventoryScreen {
 
         if (shouldRenderTexture) {
             float[] uv = atlas.getUV(tileIndex);
+            
+            // Position where the preview should appear
+            float px = sx + off;
+            float py = sy + off;
+            
             texShader.bind();
             glBindVertexArray(quadVao);
+            // Bind the atlas texture to texture unit 0
+            glActiveTexture(GL_TEXTURE0);
             atlas.bind(0);
             texShader.setInt("uTexture", 0);
             // Flip V to fix GL y-axis (flame on top for torches, etc.)
             texShader.setVec4("uUVRect", uv[0], uv[3], uv[2], uv[1]);
             setProjectionTex(new Matrix4f().ortho(
-                -(sx + off) / PREVIEW_SIZE, (sw - sx - off) / PREVIEW_SIZE,
-                -(sy + off) / PREVIEW_SIZE, (sh - sy - off) / PREVIEW_SIZE,
+                -px / PREVIEW_SIZE, (sw - px) / PREVIEW_SIZE,
+                -py / PREVIEW_SIZE, (sh - py) / PREVIEW_SIZE,
                 -1, 1));
             glDrawArrays(GL_TRIANGLES, 0, 6);
             texShader.unbind();
