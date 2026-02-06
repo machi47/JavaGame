@@ -65,6 +65,12 @@ public class PostFX {
     private int gammaMode = 0;
     public static final int GAMMA_MANUAL = 0;
     public static final int GAMMA_SRGB_FRAMEBUFFER = 1;
+    
+    // Composite debug mode: 0 = normal, 1 = HDR pre-tonemap, 2 = LDR post-tonemap
+    private int compositeDebugMode = 0;
+    public static final int COMPOSITE_NORMAL = 0;
+    public static final int COMPOSITE_HDR_PRE_TONEMAP = 1;
+    public static final int COMPOSITE_LDR_POST_TONEMAP = 2;
 
     public void init(int width, int height) {
         this.width = width;
@@ -179,6 +185,7 @@ public class PostFX {
         compositeShader.setInt("uSSAO", 1);
         compositeShader.setInt("uSSAOEnabled", ssaoEnabled ? 1 : 0);
         compositeShader.setInt("uGammaMode", gammaMode);
+        compositeShader.setInt("uCompositeDebugMode", compositeDebugMode);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sceneColorTex);
@@ -412,6 +419,23 @@ public class PostFX {
     public String getGammaModeName() {
         return (gammaMode == GAMMA_MANUAL) ? "MANUAL_GAMMA" : "SRGB_FRAMEBUFFER";
     }
+
+    // Composite debug mode controls
+    public int getCompositeDebugMode() { return compositeDebugMode; }
+    public void setCompositeDebugMode(int mode) { this.compositeDebugMode = mode; }
+    public String getCompositeDebugModeName() {
+        return switch (compositeDebugMode) {
+            case COMPOSITE_HDR_PRE_TONEMAP -> "HDR_PRE_TONEMAP";
+            case COMPOSITE_LDR_POST_TONEMAP -> "LDR_POST_TONEMAP";
+            default -> "NORMAL";
+        };
+    }
+    
+    // Exposure multiplier (read from shader constant for introspection)
+    public float getExposureMultiplier() { return 1.4f; } // Hardcoded in shader
+    
+    // Saturation multiplier (read from shader constant for introspection)
+    public float getSaturationMultiplier() { return 1.35f; } // Hardcoded in shader
 
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * t;

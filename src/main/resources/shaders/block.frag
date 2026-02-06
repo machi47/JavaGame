@@ -274,6 +274,16 @@ void main() {
     } else if (uDebugView == 4) {
         // Fog factor visualization (0=no fog=black, 1=full fog=white)
         fragColor = vec4(vec3(vFogFactor), 1.0);
+    } else if (uDebugView == 5) {
+        // Fog distance only - vFogFactor from vertex shader (distance-based)
+        fragColor = vec4(vec3(vFogFactor), 1.0);
+    } else if (uDebugView == 6) {
+        // Fog height only - height fog was removed, so this shows 0
+        // If height fog were still present, this would show heightFogFactor
+        fragColor = vec4(vec3(0.0), 1.0);
+    } else if (uDebugView == 7) {
+        // Fog combined - same as vFogFactor since height fog was removed
+        fragColor = vec4(vec3(vFogFactor), 1.0);
     } else {
         // Normal rendering
         fragColor = vec4(finalColor, texColor.a * uAlpha);

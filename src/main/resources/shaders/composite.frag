@@ -9,6 +9,12 @@ uniform int uSSAOEnabled;        // 1 = apply SSAO, 0 = skip
 // Debug toggles for visual audit
 uniform int uGammaMode;          // 0 = manual gamma, 1 = disabled (sRGB framebuffer mode)
 
+// Composite debug mode for tonemap isolation:
+// 0 = normal (full pipeline)
+// 1 = hdr_pre_tonemap (output sceneColor before tonemap/exposure/gamma)
+// 2 = ldr_post_tonemap (output after tonemap/exposure, before gamma)
+uniform int uCompositeDebugMode;
+
 // ACES filmic tone mapping — better contrast and color preservation than Reinhard
 // Modified with exposure boost to counter the compression
 vec3 toneMapACES(vec3 x) {
@@ -34,9 +40,17 @@ void main() {
         sceneColor *= ao;
     }
 
-    // Exposure boost: compensate for ACES compression
-    // Reduced to 1.0 (neutral) - let tonemapping handle HDR compression naturally
-    sceneColor *= 1.0;
+    // Debug mode 1: HDR pre-tonemap - output scene color before any processing
+    if (uCompositeDebugMode == 1) {
+        // Clamp to 0-1 range for display (HDR values will clip)
+        fragColor = vec4(clamp(sceneColor, 0.0, 1.0), 1.0);
+        return;
+    }
+
+    // Exposure adjustment for linear workflow
+    // With GL_SRGB_ALPHA textures, input is now properly linear
+    // ACES handles HDR compression, slight boost for outdoor visibility
+    sceneColor *= 1.4;
 
     // ACES tone mapping (HDR → LDR with filmic contrast curve)
     vec3 mapped = toneMapACES(sceneColor);
@@ -45,6 +59,12 @@ void main() {
     // Increased to 1.35 for more vibrant colors (Minecraft-style)
     float luma = dot(mapped, vec3(0.299, 0.587, 0.114));
     mapped = mix(vec3(luma), mapped, 1.35); // 35% saturation boost
+
+    // Debug mode 2: LDR post-tonemap - output after tonemap, before gamma
+    if (uCompositeDebugMode == 2) {
+        fragColor = vec4(mapped, 1.0);
+        return;
+    }
 
     // Gamma correction (linear → sRGB)
     // uGammaMode: 0 = apply manual gamma, 1 = skip (when using GL_FRAMEBUFFER_SRGB)

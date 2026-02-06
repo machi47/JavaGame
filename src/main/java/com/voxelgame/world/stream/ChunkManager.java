@@ -107,6 +107,11 @@ public class ChunkManager {
     public void setSeed(long seed) {
         this.seed = seed;
     }
+    
+    /** Get the world seed. */
+    public long getSeed() {
+        return seed;
+    }
 
     /** Set the world generation config (call before init). */
     public void setGenConfig(GenConfig config) {

@@ -36,7 +36,12 @@ public class TextureAtlas {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, ATLAS_WIDTH, ATLAS_HEIGHT,
+        // Use GL_SRGB_ALPHA for proper color management:
+        // - PNG textures are stored in sRGB color space (gamma ~2.2)
+        // - GL_SRGB_ALPHA tells OpenGL to convert to linear on sample
+        // - This allows correct lighting math in linear space
+        // - Final gamma correction in composite shader converts back to sRGB
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB_ALPHA, ATLAS_WIDTH, ATLAS_HEIGHT,
             0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 
         MemoryUtil.memFree(pixels);

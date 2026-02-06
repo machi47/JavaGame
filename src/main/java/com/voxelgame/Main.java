@@ -20,10 +20,13 @@ public class Main {
         boolean agentServerMode = false;
         boolean autoTestMode = false;
         boolean captureDebugViews = false;
+        boolean captureSpawnValidation = false;
         boolean directMode = false;
         boolean createMode = false;
         String directWorldName = null;
         String scriptPath = null;
+        String captureOutputDir = null;
+        String captureSeed = null;
 
         // Parse command-line arguments
         for (int i = 0; i < args.length; i++) {
@@ -32,6 +35,17 @@ public class Main {
                 case "--agent-server" -> agentServerMode = true;
                 case "--auto-test" -> autoTestMode = true;
                 case "--capture-debug-views" -> captureDebugViews = true;
+                case "--capture-spawn-validation" -> captureSpawnValidation = true;
+                case "--capture-output" -> {
+                    if (i + 1 < args.length) {
+                        captureOutputDir = args[++i];
+                    }
+                }
+                case "--capture-seed" -> {
+                    if (i + 1 < args.length) {
+                        captureSeed = args[++i];
+                    }
+                }
                 case "--create" -> {
                     createMode = true;
                     directMode = true;
@@ -59,13 +73,18 @@ public class Main {
                     System.out.println("Usage: java -jar voxelgame.jar [options]");
                     System.out.println();
                     System.out.println("Options:");
-                    System.out.println("  --world <name>      Skip main menu, load world directly (default: 'default')");
-                    System.out.println("  --direct [name]     Alias for --world");
-                    System.out.println("  --automation        Enable automation mode (socket server on localhost:25565)");
-                    System.out.println("  --agent-server      Enable AI agent interface (WebSocket on localhost:25566)");
-                    System.out.println("  --script <file>     Run automation script (implies --automation)");
-                    System.out.println("  --auto-test         Automated screenshot test sequence");
-                    System.out.println("  --help, -h          Show this help message");
+                    System.out.println("  --world <name>         Skip main menu, load world directly (default: 'default')");
+                    System.out.println("  --direct [name]        Alias for --world");
+                    System.out.println("  --create [name]        Create a new world with optional name");
+                    System.out.println("  --automation           Enable automation mode (socket server on localhost:25565)");
+                    System.out.println("  --agent-server         Enable AI agent interface (WebSocket on localhost:25566)");
+                    System.out.println("  --script <file>        Run automation script (implies --automation)");
+                    System.out.println("  --auto-test            Automated screenshot test sequence");
+                    System.out.println("  --capture-debug-views  Capture debug view screenshots + render_state.json");
+                    System.out.println("  --capture-spawn-validation  Capture spawn point validation report");
+                    System.out.println("  --capture-output <dir> Output directory for captures");
+                    System.out.println("  --capture-seed <seed>  Fixed seed for captures (default: 42)");
+                    System.out.println("  --help, -h             Show this help message");
                     System.exit(0);
                 }
                 default -> System.err.println("Unknown argument: " + args[i]);
@@ -78,7 +97,7 @@ public class Main {
         }
 
         // Automation and agent-server modes imply direct mode
-        if (automationMode || agentServerMode || autoTestMode || captureDebugViews) {
+        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation) {
             directMode = true;
         }
 
@@ -96,10 +115,24 @@ public class Main {
         loop.setAgentServerMode(agentServerMode);
         loop.setAutoTestMode(autoTestMode);
         loop.setCaptureDebugViews(captureDebugViews);
+        loop.setCaptureSpawnValidation(captureSpawnValidation);
         loop.setScriptPath(scriptPath);
+        
+        // Set custom output directory if specified
+        if (captureOutputDir != null) {
+            loop.setDebugCaptureOutputDir(captureOutputDir);
+            loop.setSpawnCaptureOutputDir(captureOutputDir);
+        }
 
         // Direct/create mode skips the menu
-        if (createMode) {
+        // Capture modes create a new world with fixed seed
+        if (captureDebugViews || captureSpawnValidation) {
+            // Use fixed seed for reproducibility (default: 42)
+            String seedStr = captureSeed != null ? captureSeed : "42";
+            String worldName = "capture-" + seedStr;
+            loop.setCaptureSeed(seedStr);
+            loop.setCreateNewWorld(worldName);
+        } else if (createMode) {
             loop.setCreateNewWorld(directWorldName);
         } else if (directMode) {
             loop.setDirectWorld(directWorldName);

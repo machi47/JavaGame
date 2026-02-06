@@ -87,9 +87,12 @@ public class Renderer {
     /** Phase 6: Current normalized time of day for fog density calculation. */
     private float currentTimeOfDay = 0.5f;
 
-    /** Debug view mode (0=normal, 1=albedo, 2=lighting, 3=depth, 4=fog) */
+    /** Debug view mode (0=normal, 1=albedo, 2=lighting, 3=depth, 4=fog, 5=fog_dist, 6=fog_height, 7=fog_combined) */
     private int debugView = 0;
-    private static final String[] DEBUG_VIEW_NAMES = {"Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor"};
+    private static final String[] DEBUG_VIEW_NAMES = {
+        "Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor", 
+        "Fog Dist Only", "Fog Height Only", "Fog Combined"
+    };
 
     /** Fog mode: 0=world fog ON, 1=fog disabled (post-only), 2=fog OFF */
     private int fogMode = 0;
@@ -145,7 +148,7 @@ public class Renderer {
 
     /** Cycle debug view mode (F7). */
     public void cycleDebugView() {
-        debugView = (debugView + 1) % 5;
+        debugView = (debugView + 1) % DEBUG_VIEW_NAMES.length;
         System.out.println("[Renderer] Debug view: " + DEBUG_VIEW_NAMES[debugView]);
     }
 
@@ -161,7 +164,23 @@ public class Renderer {
     
     /** Set debug view mode directly. */
     public void setDebugView(int mode) {
-        this.debugView = mode % 5;
+        this.debugView = mode % DEBUG_VIEW_NAMES.length;
+    }
+    
+    /** Get fog start distance (for render state JSON). */
+    public float getFogStart() {
+        if (lodConfig != null) {
+            return lodConfig.getFogStart() * skySystem.getFogDensity(currentTimeOfDay);
+        }
+        return 80.0f;
+    }
+    
+    /** Get fog end distance (for render state JSON). */
+    public float getFogEnd() {
+        if (lodConfig != null) {
+            return lodConfig.getFogEnd() * skySystem.getFogDensity(currentTimeOfDay);
+        }
+        return 128.0f;
     }
 
     /** Cycle fog mode (F10). */
