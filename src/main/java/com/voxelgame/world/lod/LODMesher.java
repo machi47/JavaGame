@@ -10,12 +10,13 @@ import com.voxelgame.world.mesh.RawMeshResult;
  * based on the requested LOD level.
  *
  * LOD 0: Delegates to NaiveMesher (full detail with AO)
- * LOD 1: Simplified faces — no AO, flat per-face lighting, still per-block
+ * LOD 1: Simplified faces — no AO, flat per-face sky visibility, still per-block
  * LOD 2: Heightmap columns — one quad per surface column + side faces
  * LOD 3: Flat colored quad — single quad at average height with average color
  *
- * All LOD levels now also generate transparent water meshes using the same
- * voxel-step sampling. Water faces are emitted when neighbor is not water.
+ * Vertex format: [x, y, z, u, v, skyVisibility, blockLight] (7 floats)
+ * skyVisibility: 0-1 passed to shader for dynamic sky/sun RGB computation
+ * blockLight: 0-1 block light level (unused for LOD 1+ but kept for format compatibility)
  *
  * All methods are CPU-only (no GL calls). Safe for background threads.
  */
@@ -112,11 +113,14 @@ public class LODMesher {
                             indices = growInt(indices, indices.length * 2);
                         }
 
-                        // Add 4 vertices (no AO, flat lighting)
+                        // Add 4 vertices (no AO, flat sky visibility for shader)
                         float[][] fv = FACE_VERTS[face];
                         int[][] fuv = FACE_UV;
                         int baseVert = vertCount / 7;
 
+                        // LOD 1+ assumes full sky visibility for surface blocks
+                        // (distant chunks don't need per-block lighting accuracy)
+                        float skyVis = light; // Use directional light as proxy for visibility
                         for (int v = 0; v < 4; v++) {
                             float u = (fuv[v][0] == 0) ? uv[0] : uv[2];
                             float vCoord = (fuv[v][1] == 0) ? uv[1] : uv[3];
@@ -125,8 +129,8 @@ public class LODMesher {
                             vertices[vertCount++] = wz + fv[v][2];
                             vertices[vertCount++] = u;
                             vertices[vertCount++] = vCoord;
-                            vertices[vertCount++] = light; // skyLight
-                            vertices[vertCount++] = 0.0f;  // blockLight
+                            vertices[vertCount++] = skyVis; // skyVisibility (directional factor baked in)
+                            vertices[vertCount++] = 0.0f;   // blockLight (unused for LOD)
                         }
 
                         // Standard quad indices
@@ -357,14 +361,14 @@ public class LODMesher {
     }
 
     private void addVert(float[] arr, int offset, float x, float y, float z,
-                         float u, float v, float skyLight) {
+                         float u, float v, float skyVisibility) {
         arr[offset] = x;
         arr[offset + 1] = y;
         arr[offset + 2] = z;
         arr[offset + 3] = u;
         arr[offset + 4] = v;
-        arr[offset + 5] = skyLight;
-        arr[offset + 6] = 0.0f; // blockLight
+        arr[offset + 5] = skyVisibility; // sky visibility for shader
+        arr[offset + 6] = 0.0f;          // blockLight (unused for LOD meshes)
     }
 
     private int addQuadIdx(int[] arr, int offset, int baseVert) {

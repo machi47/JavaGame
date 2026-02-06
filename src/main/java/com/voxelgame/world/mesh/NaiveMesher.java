@@ -7,11 +7,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Per-face mesher with ambient occlusion and sky light.
- * Vertex format: [x, y, z, u, v, light] per vertex, 4 vertices per face.
+ * Per-face mesher with ambient occlusion and sky visibility.
+ * Vertex format: [x, y, z, u, v, skyVisibility, blockLight] per vertex, 4 vertices per face.
  *
- * For each face, computes per-vertex light as:
- *   light = directionalLight * aoFactor * (skyLight / 15.0)
+ * Phase 1 Unified Lighting Model:
+ * - skyVisibility (0-1): passed directly to shader, which computes actual sky RGB dynamically
+ * - blockLight (0-1): passed to shader, which applies warm torch color
+ * - AO is baked into both values as a multiplier
+ *
+ * The shader computes final lighting as:
+ *   skyRGB = uSkyColor * vSkyVisibility * uSkyIntensity
+ *   blockRGB = vec3(1.0, 0.9, 0.7) * vBlockLight
+ *   totalRGB = skyRGB + sunRGB + blockRGB  (additive, not max)
  *
  * AO is computed by checking the 3 adjacent blocks at each vertex corner.
  * Quad diagonal is flipped when needed to avoid the "AO direction flip" artifact.
@@ -287,13 +294,15 @@ public class NaiveMesher implements Mesher {
                             aoValues[v] = ao;
 
                             float aoFactor = AO_LEVELS[ao];
-                            float skyLight = sampleVertexSkyLight(world, cx + x, y, cz + z,
-                                                                   face, aoOffsets[v]);
+                            // Sample sky visibility (0-1) instead of computed sky light
+                            float skyVis = sampleVertexSkyVisibility(world, cx + x, y, cz + z,
+                                                                      face, aoOffsets[v]);
                             float blockLight = sampleVertexBlockLight(world, cx + x, y, cz + z,
-                                                                   face, aoOffsets[v]);
+                                                                       face, aoOffsets[v]);
 
-                            // Keep sky and block light separate for shader-side time-of-day modulation
-                            vertSkyLight[v] = dirLight * aoFactor * (skyLight / 15.0f);
+                            // Pass visibility and block light with AO and directional factors baked in
+                            // Shader computes actual RGB from these + time-of-day uniforms
+                            vertSkyLight[v] = dirLight * aoFactor * skyVis;
                             vertBlockLight[v] = dirLight * aoFactor * (blockLight / 15.0f);
                         }
 
@@ -373,19 +382,21 @@ public class NaiveMesher implements Mesher {
     }
 
     /**
-     * Sample sky light for a vertex by averaging the light from the face's
+     * Sample sky visibility for a vertex by averaging visibility from the face's
      * normal direction neighbor and the 3 AO neighbor positions.
-     * This gives smooth per-vertex lighting.
+     * This gives smooth per-vertex sky visibility for the shader.
+     * 
+     * Returns 0-1 visibility (not light level).
      */
-    private float sampleVertexSkyLight(WorldAccess world, int bx, int by, int bz,
-                                        int face, int[][] aoNeighbors) {
+    private float sampleVertexSkyVisibility(WorldAccess world, int bx, int by, int bz,
+                                             int face, int[][] aoNeighbors) {
         int[] normal = FACE_NORMALS[face];
         // The face neighbor (where the air is)
         int fnx = bx + normal[0];
         int fny = by + normal[1];
         int fnz = bz + normal[2];
 
-        float totalLight = getSkyLightSafe(world, fnx, fny, fnz);
+        float totalVis = getSkyVisibilitySafe(world, fnx, fny, fnz);
         int count = 1;
 
         // Also sample from the AO neighbor directions (shifted by face normal)
@@ -394,16 +405,16 @@ public class NaiveMesher implements Mesher {
             int sx = bx + ao[0];
             int sy = by + ao[1];
             int sz = bz + ao[2];
-            // Only sample light from non-opaque positions
+            // Only sample visibility from non-opaque positions
             int blockId = world.getBlock(sx, sy, sz);
             Block block = Blocks.get(blockId);
             if (!block.solid() || block.transparent()) {
-                totalLight += getSkyLightSafe(world, sx, sy, sz);
+                totalVis += getSkyVisibilitySafe(world, sx, sy, sz);
                 count++;
             }
         }
 
-        return totalLight / count;
+        return totalVis / count;
     }
 
     /**
@@ -440,10 +451,10 @@ public class NaiveMesher implements Mesher {
         return world.getBlockLight(x, y, z);
     }
 
-    private float getSkyLightSafe(WorldAccess world, int x, int y, int z) {
-        if (y >= WorldConstants.WORLD_HEIGHT) return 15.0f;
+    private float getSkyVisibilitySafe(WorldAccess world, int x, int y, int z) {
+        if (y >= WorldConstants.WORLD_HEIGHT) return 1.0f;
         if (y < 0) return 0.0f;
-        return world.getSkyLight(x, y, z);
+        return world.getSkyVisibility(x, y, z);
     }
 
     private void addVertex(List<Float> verts, float x, float y, float z,

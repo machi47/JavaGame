@@ -122,6 +122,15 @@ public class Renderer {
         blockShader.setVec3("uFogColor", fogColor[0], fogColor[1], fogColor[2]);
         blockShader.setFloat("uFogStart", fogStart);
         blockShader.setFloat("uFogEnd", fogEnd);
+        
+        // Unified lighting uniforms - sky color for shader-side RGB computation
+        // Use fog color as sky color (they're derived from the same source in WorldTime)
+        blockShader.setVec3("uSkyColor", fogColor[0], fogColor[1], fogColor[2]);
+        // Sky intensity: modulate based on sun brightness (brighter sky during day)
+        // At midday (sunBrightness=0.65): skyIntensity ~0.4
+        // At night (sunBrightness=0.05): skyIntensity ~0.05
+        float skyIntensity = 0.1f + sunBrightness * 0.5f;
+        blockShader.setFloat("uSkyIntensity", skyIntensity);
 
         atlas.bind(0);
 

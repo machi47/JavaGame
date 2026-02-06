@@ -23,6 +23,31 @@ public class World implements WorldAccess {
     }
 
     @Override
+    public float getSkyVisibility(int x, int y, int z) {
+        if (y >= WorldConstants.WORLD_HEIGHT) return 1.0f;
+        if (y < 0) return 0.0f;
+        int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
+        int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
+        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        if (chunk == null) return 1.0f; // assume full sky visibility for unloaded chunks
+        int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
+        int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
+        return chunk.getSkyVisibility(lx, y, lz);
+    }
+
+    public void setSkyVisibility(int x, int y, int z, float visibility) {
+        if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
+        int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
+        int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
+        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        if (chunk == null) return;
+        int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
+        int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
+        chunk.setSkyVisibility(lx, y, lz, visibility);
+    }
+
+    @Override
+    @Deprecated
     public int getSkyLight(int x, int y, int z) {
         if (y >= WorldConstants.WORLD_HEIGHT) return 15;
         if (y < 0) return 0;

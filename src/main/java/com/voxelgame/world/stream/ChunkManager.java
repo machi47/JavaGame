@@ -237,7 +237,7 @@ public class ChunkManager {
                     if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
                         chunk.setCurrentLOD(newLOD);
                         if (chunk.isLightDirty()) {
-                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialSkyVisibility(chunk);
                             Lighting.computeInitialBlockLight(chunk, world);
                         }
                         submitMeshJob(chunk, pos, false);
@@ -259,7 +259,7 @@ public class ChunkManager {
                 if (meshJobsSubmitted < maxMeshJobsPerUpdate) {
                     if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
                         if (chunk.isLightDirty()) {
-                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialSkyVisibility(chunk);
                             Lighting.computeInitialBlockLight(chunk, world);
                         }
                         submitMeshJob(chunk, pos, false);
@@ -353,7 +353,7 @@ public class ChunkManager {
                             loaded.setCurrentLOD(level);
                             world.addChunk(pos, loaded);
                             if (level == LODLevel.LOD_0) {
-                                Lighting.computeInitialSkyLight(loaded, world);
+                                Lighting.computeInitialSkyVisibility(loaded);
                                 Lighting.computeInitialBlockLight(loaded, world);
                                 submitMeshJob(loaded, pos, true);
                             } else {
@@ -429,7 +429,7 @@ public class ChunkManager {
                         LODLevel level = chunk.getCurrentLOD();
 
                         if (level == LODLevel.LOD_0) {
-                            Lighting.computeInitialSkyLight(chunk, world);
+                            Lighting.computeInitialSkyVisibility(chunk);
                             Lighting.computeInitialBlockLight(chunk, world);
                             submitMeshJob(chunk, pos, true);
                         } else {

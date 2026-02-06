@@ -65,7 +65,42 @@ public class Chunk {
         modified = true;
     }
 
-    /** Get sky light level (0-15) at local coordinates. */
+    /** 
+     * Get sky visibility (0.0 - 1.0) at local coordinates.
+     * Returns 1.0 if the block has an unobstructed column to the sky, 0.0 otherwise.
+     * Stored internally as 0-15 in the high nibble of lightMap.
+     */
+    public float getSkyVisibility(int x, int y, int z) {
+        if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
+            y < 0 || y >= WorldConstants.WORLD_HEIGHT ||
+            z < 0 || z >= WorldConstants.CHUNK_SIZE) {
+            return (y >= WorldConstants.WORLD_HEIGHT) ? 1.0f : 0.0f;
+        }
+        int raw = (lightMap[index(x, y, z)] >> 4) & 0xF;
+        return raw / 15.0f;
+    }
+
+    /**
+     * Set sky visibility (0.0 - 1.0) at local coordinates.
+     * Stored internally as 0-15 in the high nibble of lightMap.
+     */
+    public void setSkyVisibility(int x, int y, int z, float visibility) {
+        if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
+            y < 0 || y >= WorldConstants.WORLD_HEIGHT ||
+            z < 0 || z >= WorldConstants.CHUNK_SIZE) {
+            return;
+        }
+        int level = Math.clamp(Math.round(visibility * 15.0f), 0, 15);
+        int idx = index(x, y, z);
+        lightMap[idx] = (byte) ((level << 4) | (lightMap[idx] & 0xF));
+    }
+
+    /** 
+     * Get sky light level (0-15) at local coordinates.
+     * @deprecated Use {@link #getSkyVisibility(int, int, int)} for the new lighting model.
+     * This method is kept for backward compatibility during transition.
+     */
+    @Deprecated
     public int getSkyLight(int x, int y, int z) {
         if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
             y < 0 || y >= WorldConstants.WORLD_HEIGHT ||
@@ -75,7 +110,12 @@ public class Chunk {
         return (lightMap[index(x, y, z)] >> 4) & 0xF;
     }
 
-    /** Set sky light level (0-15) at local coordinates. */
+    /** 
+     * Set sky light level (0-15) at local coordinates.
+     * @deprecated Use {@link #setSkyVisibility(int, int, int, float)} for the new lighting model.
+     * This method is kept for backward compatibility during transition.
+     */
+    @Deprecated
     public void setSkyLight(int x, int y, int z, int level) {
         if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
             y < 0 || y >= WorldConstants.WORLD_HEIGHT ||

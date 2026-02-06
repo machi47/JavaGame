@@ -6,15 +6,17 @@ import java.util.Queue;
 import java.util.Set;
 
 /**
- * Block lighting system. Computes sky light and block light propagation
- * using a BFS flood-fill approach.
- *
- * Sky light: sunlight from above. Level 15 at the top, propagates downward
- * through air with no decay (direct sunlight column), spreads sideways with
- * -1 per block.
- *
- * Block light: emitted by light-emitting blocks (torches etc). Currently
- * unused but the infrastructure supports it.
+ * Unified lighting system - Phase 1 implementation.
+ * 
+ * Sky Visibility: Simple column-based computation (no BFS propagation).
+ * A block has sky visibility = 1.0 if there's an unobstructed path straight up
+ * to the sky; 0.0 otherwise. This is computed per-column, not propagated laterally.
+ * 
+ * Block Light: Still uses BFS flood-fill from emissive blocks (torches, etc.).
+ * Will be upgraded to RGB in Phase 4.
+ * 
+ * The shader computes actual sky/sun RGB from visibility at render time,
+ * making lighting respond dynamically to time-of-day without remeshing.
  */
 public class Lighting {
 
@@ -27,318 +29,154 @@ public class Lighting {
         {0, 0, 1}, {0, 0, -1}
     };
 
+    // ========================================================================
+    // SKY VISIBILITY - Simple column-based computation
+    // ========================================================================
+
     /**
-     * Compute initial sky light for a newly generated chunk.
-     * First does a column pass (direct sunlight straight down),
-     * then BFS flood-fill for lateral propagation.
+     * Compute initial sky visibility for a newly generated chunk.
+     * Simple column pass: trace straight down from sky, visibility = 1.0 until
+     * we hit an opaque block, then 0.0 for everything below.
+     * 
+     * No lateral propagation - that's handled by the shader now.
      */
-    public static void computeInitialSkyLight(Chunk chunk, World world) {
-        ChunkPos cPos = chunk.getPos();
-        int cx = cPos.x() * WorldConstants.CHUNK_SIZE;
-        int cz = cPos.z() * WorldConstants.CHUNK_SIZE;
-
-        Queue<long[]> bfsQueue = new ArrayDeque<>();
-
-        // Column pass: cast sunlight straight down
+    public static void computeInitialSkyVisibility(Chunk chunk) {
         for (int x = 0; x < WorldConstants.CHUNK_SIZE; x++) {
             for (int z = 0; z < WorldConstants.CHUNK_SIZE; z++) {
-                boolean inSun = true;
-                for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
-                    int blockId = chunk.getBlock(x, y, z);
-                    Block block = Blocks.get(blockId);
-
-                    if (isOpaque(block)) {
-                        inSun = false;
-                        chunk.setSkyLight(x, y, z, 0);
-                    } else if (inSun) {
-                        chunk.setSkyLight(x, y, z, MAX_LIGHT);
-                        // Add to BFS for lateral propagation
-                        bfsQueue.add(new long[]{cx + x, y, cz + z, MAX_LIGHT});
-                    } else {
-                        // Below an opaque block, in a transparent block — light will come from BFS
-                        int reduction = getLightReduction(block);
-                        if (reduction > 0) {
-                            chunk.setSkyLight(x, y, z, 0);
-                        } else {
-                            chunk.setSkyLight(x, y, z, 0);
-                        }
-                    }
-                }
+                computeColumnVisibility(chunk, x, z);
             }
         }
-
-        // BFS flood-fill for lateral sky light propagation
-        propagateSkyLightBFS(bfsQueue, world);
-
         chunk.setLightDirty(false);
     }
 
     /**
-     * BFS flood-fill sky light propagation. Works with world coordinates
-     * so it naturally crosses chunk boundaries.
+     * Compute sky visibility for a single column in the chunk.
+     * Blocks have visibility 1.0 if they can see the sky directly above,
+     * 0.0 if there's any opaque block above them.
      */
-    private static void propagateSkyLightBFS(Queue<long[]> queue, World world) {
-        while (!queue.isEmpty()) {
-            long[] entry = queue.poll();
-            int wx = (int) entry[0];
-            int wy = (int) entry[1];
-            int wz = (int) entry[2];
-            int lightLevel = (int) entry[3];
-
-            for (int[] dir : DIRS) {
-                int nx = wx + dir[0];
-                int ny = wy + dir[1];
-                int nz = wz + dir[2];
-
-                if (ny < 0 || ny >= WorldConstants.WORLD_HEIGHT) continue;
-
-                int neighborBlock = world.getBlock(nx, ny, nz);
-                Block nBlock = Blocks.get(neighborBlock);
-
-                if (isOpaque(nBlock)) continue;
-
-                int reduction = getLightReduction(nBlock);
-                // Sunlight going straight down doesn't decay
-                int newLight;
-                if (dir[1] == -1 && dir[0] == 0 && dir[2] == 0 && lightLevel == MAX_LIGHT) {
-                    newLight = MAX_LIGHT - reduction;
-                } else {
-                    newLight = lightLevel - 1 - reduction;
-                }
-
-                if (newLight <= 0) continue;
-
-                int currentLight = world.getSkyLight(nx, ny, nz);
-                if (newLight > currentLight) {
-                    world.setSkyLight(nx, ny, nz, newLight);
-                    queue.add(new long[]{nx, ny, nz, newLight});
-                }
+    private static void computeColumnVisibility(Chunk chunk, int x, int z) {
+        boolean canSeeSky = true;
+        
+        for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
+            int blockId = chunk.getBlock(x, y, z);
+            Block block = Blocks.get(blockId);
+            
+            if (isOpaque(block)) {
+                // This block is opaque - it and everything below can't see sky
+                canSeeSky = false;
+                chunk.setSkyVisibility(x, y, z, 0.0f);
+            } else if (canSeeSky) {
+                // Transparent block with clear sky above
+                chunk.setSkyVisibility(x, y, z, 1.0f);
+            } else {
+                // Transparent block but something opaque is above
+                chunk.setSkyVisibility(x, y, z, 0.0f);
             }
         }
     }
 
     /**
-     * Recompute sky light after a block is broken (removed).
-     * Light floods into the new air space and propagates outward.
-     * Returns the set of chunk positions that were modified.
+     * Update sky visibility after a block is removed (broken).
+     * If this opens up a column to the sky, update visibility for this column.
+     * Returns affected chunk positions for mesh rebuild.
      */
     public static Set<ChunkPos> onBlockRemoved(World world, int wx, int wy, int wz) {
         Set<ChunkPos> affectedChunks = new HashSet<>();
-
-        // Find the max sky light among neighbors
-        int maxNeighborLight = 0;
-        boolean hasSunAbove = false;
-
-        // Check if there's direct sunlight above
-        boolean sunColumn = true;
+        
+        // Check if this block was blocking sky visibility
+        // Look up to see if there's now a clear path to sky
+        boolean clearAbove = true;
         for (int y = wy + 1; y < WorldConstants.WORLD_HEIGHT; y++) {
             int above = world.getBlock(wx, y, wz);
             if (isOpaque(Blocks.get(above))) {
-                sunColumn = false;
+                clearAbove = false;
                 break;
             }
         }
-
-        if (sunColumn) {
-            hasSunAbove = true;
-        }
-
-        // Check all 6 neighbors for existing light
-        for (int[] dir : DIRS) {
-            int nx = wx + dir[0];
-            int ny = wy + dir[1];
-            int nz = wz + dir[2];
-            if (ny < 0 || ny >= WorldConstants.WORLD_HEIGHT) continue;
-            int nLight = world.getSkyLight(nx, ny, nz);
-            maxNeighborLight = Math.max(maxNeighborLight, nLight);
-        }
-
-        // Set this block's light
-        int newLight;
-        if (hasSunAbove) {
-            newLight = MAX_LIGHT;
-        } else {
-            newLight = Math.max(0, maxNeighborLight - 1);
-        }
-
-        world.setSkyLight(wx, wy, wz, newLight);
-        addAffectedChunk(affectedChunks, wx, wy, wz);
-
-        // If we have sunlight, also propagate downward through the column
-        Queue<long[]> bfsQueue = new ArrayDeque<>();
-        bfsQueue.add(new long[]{wx, wy, wz, newLight});
-
-        if (hasSunAbove) {
-            // Propagate sunlight down through the column
-            for (int y = wy - 1; y >= 0; y--) {
-                int below = world.getBlock(wx, y, wz);
-                Block bBlock = Blocks.get(below);
-                if (isOpaque(bBlock)) break;
-                int reduction = getLightReduction(bBlock);
-                int columnLight = MAX_LIGHT - reduction;
-                if (columnLight <= 0) break;
-                world.setSkyLight(wx, y, wz, columnLight);
-                addAffectedChunk(affectedChunks, wx, y, wz);
-                bfsQueue.add(new long[]{wx, y, wz, columnLight});
+        
+        if (clearAbove) {
+            // This column now has sky access - update visibility for this block and below
+            for (int y = wy; y >= 0; y--) {
+                int blockId = world.getBlock(wx, y, wz);
+                Block block = Blocks.get(blockId);
+                
+                if (isOpaque(block)) {
+                    // Hit an opaque block - stop propagating visibility
+                    break;
+                }
+                
+                // Update visibility to 1.0 (can see sky)
+                float currentVis = world.getSkyVisibility(wx, y, wz);
+                if (currentVis < 1.0f) {
+                    world.setSkyVisibility(wx, y, wz, 1.0f);
+                    addAffectedChunk(affectedChunks, wx, y, wz);
+                }
             }
         }
-
-        // BFS propagate from the changed position outward
-        propagateSkyLightBFSTracked(bfsQueue, world, affectedChunks);
-
+        
+        // The removed block's position now gets visibility based on column state
+        world.setSkyVisibility(wx, wy, wz, clearAbove ? 1.0f : 0.0f);
+        addAffectedChunk(affectedChunks, wx, wy, wz);
+        
         return affectedChunks;
     }
 
     /**
-     * Recompute sky light after a block is placed.
-     * The block now blocks light — need to remove light and re-propagate.
-     * Returns the set of chunk positions that were modified.
+     * Update sky visibility after a block is placed.
+     * If this block is opaque, it blocks sky for everything below.
+     * Returns affected chunk positions for mesh rebuild.
      */
     public static Set<ChunkPos> onBlockPlaced(World world, int wx, int wy, int wz) {
         Set<ChunkPos> affectedChunks = new HashSet<>();
-
-        // Check if this block was in a sunlight column
-        boolean wasSunColumn = (world.getSkyLight(wx, wy, wz) == MAX_LIGHT);
-
-        // The placed block is now opaque — set its light to 0
-        world.setSkyLight(wx, wy, wz, 0);
-        addAffectedChunk(affectedChunks, wx, wy, wz);
-
-        // If this blocked a sunlight column, remove sunlight below
-        if (wasSunColumn) {
+        
+        int blockId = world.getBlock(wx, wy, wz);
+        Block block = Blocks.get(blockId);
+        
+        if (isOpaque(block)) {
+            // Opaque block placed - it blocks sky visibility for itself and below
+            world.setSkyVisibility(wx, wy, wz, 0.0f);
+            addAffectedChunk(affectedChunks, wx, wy, wz);
+            
+            // Check if this was a sky-visible column - if so, update everything below
             for (int y = wy - 1; y >= 0; y--) {
-                int below = world.getBlock(wx, y, wz);
-                Block bBlock = Blocks.get(below);
-                if (isOpaque(bBlock)) break;
-                world.setSkyLight(wx, y, wz, 0);
-                addAffectedChunk(affectedChunks, wx, y, wz);
-            }
-        }
-
-        // Remove light that was passing through this position using BFS
-        // Collect all positions that need light removed, then re-propagate from boundaries
-        Queue<long[]> removeQueue = new ArrayDeque<>();
-        Queue<long[]> reproQueue = new ArrayDeque<>();
-
-        // Seed the removal from the placed block's neighbors that had lower light
-        for (int[] dir : DIRS) {
-            int nx = wx + dir[0];
-            int ny = wy + dir[1];
-            int nz = wz + dir[2];
-            if (ny < 0 || ny >= WorldConstants.WORLD_HEIGHT) continue;
-
-            int nBlockId = world.getBlock(nx, ny, nz);
-            if (isOpaque(Blocks.get(nBlockId))) continue;
-
-            int nLight = world.getSkyLight(nx, ny, nz);
-            if (nLight > 0) {
-                removeQueue.add(new long[]{nx, ny, nz, nLight});
-            }
-        }
-
-        // Also add positions below if sun column was broken
-        if (wasSunColumn) {
-            for (int y = wy - 1; y >= 0; y--) {
-                int below = world.getBlock(wx, y, wz);
-                if (isOpaque(Blocks.get(below))) break;
-                removeQueue.add(new long[]{wx, y, wz, 0});
-            }
-        }
-
-        // BFS light removal
-        Set<Long> visited = new HashSet<>();
-        while (!removeQueue.isEmpty()) {
-            long[] entry = removeQueue.poll();
-            int ex = (int) entry[0];
-            int ey = (int) entry[1];
-            int ez = (int) entry[2];
-            int oldLight = (int) entry[3];
-
-            long key = packPos(ex, ey, ez);
-            if (visited.contains(key)) continue;
-            visited.add(key);
-
-            int currentLight = world.getSkyLight(ex, ey, ez);
-
-            for (int[] dir : DIRS) {
-                int nx = ex + dir[0];
-                int ny = ey + dir[1];
-                int nz = ez + dir[2];
-                if (ny < 0 || ny >= WorldConstants.WORLD_HEIGHT) continue;
-
-                int nBlockId = world.getBlock(nx, ny, nz);
-                if (isOpaque(Blocks.get(nBlockId))) continue;
-
-                int nLight = world.getSkyLight(nx, ny, nz);
-
-                if (nLight > 0 && nLight < currentLight) {
-                    // This neighbor got its light from us — remove it
-                    world.setSkyLight(nx, ny, nz, 0);
-                    addAffectedChunk(affectedChunks, nx, ny, nz);
-                    removeQueue.add(new long[]{nx, ny, nz, nLight});
-                } else if (nLight >= currentLight && nLight > 0) {
-                    // This neighbor has light from another source — re-propagate from here
-                    reproQueue.add(new long[]{nx, ny, nz, nLight});
+                float currentVis = world.getSkyVisibility(wx, y, wz);
+                if (currentVis > 0.0f) {
+                    int belowId = world.getBlock(wx, y, wz);
+                    Block belowBlock = Blocks.get(belowId);
+                    
+                    if (isOpaque(belowBlock)) {
+                        // Already opaque, visibility was already 0 or will be set
+                        break;
+                    }
+                    
+                    // Transparent block that lost sky visibility
+                    world.setSkyVisibility(wx, y, wz, 0.0f);
+                    addAffectedChunk(affectedChunks, wx, y, wz);
+                } else {
+                    // Already had no visibility, nothing below will have it either
+                    break;
                 }
             }
-
-            // Also zero out this one if it wasn't already
-            if (currentLight > 0) {
-                world.setSkyLight(ex, ey, ez, 0);
-                addAffectedChunk(affectedChunks, ex, ey, ez);
+        } else {
+            // Transparent block placed - inherits visibility from column state
+            boolean clearAbove = true;
+            for (int y = wy + 1; y < WorldConstants.WORLD_HEIGHT; y++) {
+                int above = world.getBlock(wx, y, wz);
+                if (isOpaque(Blocks.get(above))) {
+                    clearAbove = false;
+                    break;
+                }
             }
+            world.setSkyVisibility(wx, wy, wz, clearAbove ? 1.0f : 0.0f);
+            addAffectedChunk(affectedChunks, wx, wy, wz);
         }
-
-        // Re-propagate light from boundary sources
-        propagateSkyLightBFSTracked(reproQueue, world, affectedChunks);
-
+        
         return affectedChunks;
     }
 
-    /**
-     * BFS propagation that tracks which chunks were affected.
-     */
-    private static void propagateSkyLightBFSTracked(Queue<long[]> queue, World world, Set<ChunkPos> affected) {
-        while (!queue.isEmpty()) {
-            long[] entry = queue.poll();
-            int wx = (int) entry[0];
-            int wy = (int) entry[1];
-            int wz = (int) entry[2];
-            int lightLevel = (int) entry[3];
-
-            for (int[] dir : DIRS) {
-                int nx = wx + dir[0];
-                int ny = wy + dir[1];
-                int nz = wz + dir[2];
-
-                if (ny < 0 || ny >= WorldConstants.WORLD_HEIGHT) continue;
-
-                int neighborBlock = world.getBlock(nx, ny, nz);
-                Block nBlock = Blocks.get(neighborBlock);
-
-                if (isOpaque(nBlock)) continue;
-
-                int reduction = getLightReduction(nBlock);
-                int newLight;
-                if (dir[1] == -1 && dir[0] == 0 && dir[2] == 0 && lightLevel == MAX_LIGHT) {
-                    newLight = MAX_LIGHT - reduction;
-                } else {
-                    newLight = lightLevel - 1 - reduction;
-                }
-
-                if (newLight <= 0) continue;
-
-                int currentLight = world.getSkyLight(nx, ny, nz);
-                if (newLight > currentLight) {
-                    world.setSkyLight(nx, ny, nz, newLight);
-                    addAffectedChunk(affected, nx, ny, nz);
-                    queue.add(new long[]{nx, ny, nz, newLight});
-                }
-            }
-        }
-    }
-
-    // ======== BLOCK LIGHT SYSTEM ========
+    // ========================================================================
+    // BLOCK LIGHT SYSTEM - BFS propagation (unchanged from original)
+    // ========================================================================
 
     /**
      * Compute initial block light for a newly generated chunk.
@@ -513,6 +351,23 @@ public class Lighting {
             }
         }
     }
+
+    // ========================================================================
+    // LEGACY API - For backward compatibility during transition
+    // ========================================================================
+
+    /**
+     * Legacy method - redirects to computeInitialSkyVisibility.
+     * @deprecated Use {@link #computeInitialSkyVisibility(Chunk)} instead.
+     */
+    @Deprecated
+    public static void computeInitialSkyLight(Chunk chunk, World world) {
+        computeInitialSkyVisibility(chunk);
+    }
+
+    // ========================================================================
+    // HELPER METHODS
+    // ========================================================================
 
     /** Check if a block is opaque (blocks light completely). */
     private static boolean isOpaque(Block block) {

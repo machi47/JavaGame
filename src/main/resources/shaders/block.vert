@@ -1,8 +1,8 @@
 #version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aTexCoord;
-layout(location = 2) in float aSkyLight;
-layout(location = 3) in float aBlockLight;
+layout(location = 2) in float aSkyVisibility;  // 0-1 sky visibility (was aSkyLight)
+layout(location = 3) in float aBlockLight;     // 0-1 block light with AO baked in
 
 uniform mat4 uProjection;
 uniform mat4 uView;
@@ -11,7 +11,7 @@ uniform float uFogStart;
 uniform float uFogEnd;
 
 out vec2 vTexCoord;
-out float vSkyLight;
+out float vSkyVisibility;
 out float vBlockLight;
 out float vFogFactor;
 out vec3 vViewPos;   // view-space position (for SSAO)
@@ -21,7 +21,7 @@ void main() {
     vec4 viewPos4 = uView * vec4(aPos, 1.0);
     gl_Position = uProjection * viewPos4;
     vTexCoord = aTexCoord;
-    vSkyLight = aSkyLight;
+    vSkyVisibility = aSkyVisibility;
     vBlockLight = aBlockLight;
     vViewPos = viewPos4.xyz;
     vWorldPos = aPos;  // Pass world position for normal calculation in fragment

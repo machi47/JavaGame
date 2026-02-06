@@ -1,6 +1,7 @@
 package com.voxelgame.sim;
 
 import com.voxelgame.world.Blocks;
+import com.voxelgame.world.LightingUtil;
 import com.voxelgame.world.World;
 import com.voxelgame.world.WorldConstants;
 import com.voxelgame.world.WorldTime;
@@ -70,13 +71,13 @@ public class MobSpawner {
                 // Random passive mob spawn
                 int choice = random.nextInt(4); // 0=pig, 1=cow, 2=sheep, 3=chicken
                 if (choice == 0 && entityManager.countType(EntityType.PIG) < MAX_PIGS) {
-                    trySpawnPig(world, player, entityManager);
+                    trySpawnPig(world, player, entityManager, worldTime);
                 } else if (choice == 1 && entityManager.countType(EntityType.COW) < MAX_COWS) {
-                    trySpawnCow(world, player, entityManager);
+                    trySpawnCow(world, player, entityManager, worldTime);
                 } else if (choice == 2 && entityManager.countType(EntityType.SHEEP) < MAX_SHEEP) {
-                    trySpawnSheep(world, player, entityManager);
+                    trySpawnSheep(world, player, entityManager, worldTime);
                 } else if (choice == 3 && entityManager.countType(EntityType.CHICKEN) < MAX_CHICKENS) {
-                    trySpawnChicken(world, player, entityManager);
+                    trySpawnChicken(world, player, entityManager, worldTime);
                 }
             }
         }
@@ -87,7 +88,7 @@ public class MobSpawner {
             hostileTimer = 0;
 
             if (worldTime.isNight() && entityManager.countType(EntityType.ZOMBIE) < MAX_ZOMBIES) {
-                trySpawnZombie(world, player, entityManager);
+                trySpawnZombie(world, player, entityManager, worldTime);
             }
         }
     }
@@ -115,7 +116,7 @@ public class MobSpawner {
      * Attempt to spawn a pig near the player.
      * Requires grass surface block with air above AND sufficient light.
      */
-    private void trySpawnPig(World world, Player player, EntityManager entityManager) {
+    private void trySpawnPig(World world, Player player, EntityManager entityManager, WorldTime worldTime) {
         Vector3f pPos = player.getPosition();
 
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -134,15 +135,18 @@ public class MobSpawner {
             if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
             if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
 
-            // Check light level — pigs need light >= 7
-            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            // Check light level using unified lighting model
+            float skyVis = world.getSkyVisibility((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
             int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
-            int maxLight = Math.max(skyLight, blockLight);
-            if (maxLight < HOSTILE_MAX_LIGHT) continue; // too dark for passive mobs
+            float sunBrightness = worldTime.getSunBrightness();
+            if (!LightingUtil.isBrightForPassives(skyVis, blockLight, sunBrightness, HOSTILE_MAX_LIGHT)) {
+                continue; // too dark for passive mobs
+            }
 
             Pig pig = new Pig(sx, spawnY, sz);
             entityManager.addEntity(pig);
-            System.out.printf("[Spawn] Pig spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            int effectiveLight = LightingUtil.computeSpawnLightLevel(skyVis, blockLight, sunBrightness);
+            System.out.printf("[Spawn] Pig spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, effectiveLight);
             return;
         }
     }
@@ -151,7 +155,7 @@ public class MobSpawner {
      * Attempt to spawn a cow near the player.
      * Requires grass block + air above, in bright areas (light >= 7).
      */
-    private void trySpawnCow(World world, Player player, EntityManager entityManager) {
+    private void trySpawnCow(World world, Player player, EntityManager entityManager, WorldTime worldTime) {
         Vector3f pPos = player.getPosition();
 
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -176,15 +180,18 @@ public class MobSpawner {
             if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
             if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
 
-            // Check light level — cows need light >= 7
-            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            // Check light level using unified lighting model
+            float skyVis = world.getSkyVisibility((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
             int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
-            int maxLight = Math.max(skyLight, blockLight);
-            if (maxLight < HOSTILE_MAX_LIGHT) continue; // too dark for passive mobs
+            float sunBrightness = worldTime.getSunBrightness();
+            if (!LightingUtil.isBrightForPassives(skyVis, blockLight, sunBrightness, HOSTILE_MAX_LIGHT)) {
+                continue; // too dark for passive mobs
+            }
 
             Cow cow = new Cow(sx, spawnY, sz);
             entityManager.addEntity(cow);
-            System.out.printf("[Spawn] Cow spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            int effectiveLight = LightingUtil.computeSpawnLightLevel(skyVis, blockLight, sunBrightness);
+            System.out.printf("[Spawn] Cow spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, effectiveLight);
             return;
         }
     }
@@ -193,7 +200,7 @@ public class MobSpawner {
      * Attempt to spawn a sheep near the player.
      * Requires grass block + air above, in bright areas (light >= 7).
      */
-    private void trySpawnSheep(World world, Player player, EntityManager entityManager) {
+    private void trySpawnSheep(World world, Player player, EntityManager entityManager, WorldTime worldTime) {
         Vector3f pPos = player.getPosition();
 
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -218,15 +225,18 @@ public class MobSpawner {
             if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
             if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
 
-            // Check light level — sheep need light >= 7
-            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            // Check light level using unified lighting model
+            float skyVis = world.getSkyVisibility((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
             int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
-            int maxLight = Math.max(skyLight, blockLight);
-            if (maxLight < HOSTILE_MAX_LIGHT) continue; // too dark for passive mobs
+            float sunBrightness = worldTime.getSunBrightness();
+            if (!LightingUtil.isBrightForPassives(skyVis, blockLight, sunBrightness, HOSTILE_MAX_LIGHT)) {
+                continue; // too dark for passive mobs
+            }
 
             Sheep sheep = new Sheep(sx, spawnY, sz);
             entityManager.addEntity(sheep);
-            System.out.printf("[Spawn] Sheep spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            int effectiveLight = LightingUtil.computeSpawnLightLevel(skyVis, blockLight, sunBrightness);
+            System.out.printf("[Spawn] Sheep spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, effectiveLight);
             return;
         }
     }
@@ -235,7 +245,7 @@ public class MobSpawner {
      * Attempt to spawn a chicken near the player.
      * Requires grass block + air above, in bright areas (light >= 7).
      */
-    private void trySpawnChicken(World world, Player player, EntityManager entityManager) {
+    private void trySpawnChicken(World world, Player player, EntityManager entityManager, WorldTime worldTime) {
         Vector3f pPos = player.getPosition();
 
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -260,15 +270,18 @@ public class MobSpawner {
             if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
             if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
 
-            // Check light level — chickens need light >= 7
-            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            // Check light level using unified lighting model
+            float skyVis = world.getSkyVisibility((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
             int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
-            int maxLight = Math.max(skyLight, blockLight);
-            if (maxLight < HOSTILE_MAX_LIGHT) continue; // too dark for passive mobs
+            float sunBrightness = worldTime.getSunBrightness();
+            if (!LightingUtil.isBrightForPassives(skyVis, blockLight, sunBrightness, HOSTILE_MAX_LIGHT)) {
+                continue; // too dark for passive mobs
+            }
 
             Chicken chicken = new Chicken(sx, spawnY, sz);
             entityManager.addEntity(chicken);
-            System.out.printf("[Spawn] Chicken spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            int effectiveLight = LightingUtil.computeSpawnLightLevel(skyVis, blockLight, sunBrightness);
+            System.out.printf("[Spawn] Chicken spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, effectiveLight);
             return;
         }
     }
@@ -277,7 +290,7 @@ public class MobSpawner {
      * Attempt to spawn a zombie near the player.
      * Requires solid surface with air above, in dark areas (light < 7).
      */
-    private void trySpawnZombie(World world, Player player, EntityManager entityManager) {
+    private void trySpawnZombie(World world, Player player, EntityManager entityManager, WorldTime worldTime) {
         Vector3f pPos = player.getPosition();
 
         for (int attempt = 0; attempt < 8; attempt++) {
@@ -293,15 +306,18 @@ public class MobSpawner {
             if (world.getBlock((int) Math.floor(sx), spawnY, (int) Math.floor(sz)) != 0) continue;
             if (world.getBlock((int) Math.floor(sx), spawnY + 1, (int) Math.floor(sz)) != 0) continue;
 
-            // Check light level — zombies spawn in dark (light < 7)
-            int skyLight = world.getSkyLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
+            // Check light level using unified lighting model — zombies spawn in dark (light < 7)
+            float skyVis = world.getSkyVisibility((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
             int blockLight = world.getBlockLight((int) Math.floor(sx), spawnY, (int) Math.floor(sz));
-            int maxLight = Math.max(skyLight, blockLight);
-            if (maxLight >= HOSTILE_MAX_LIGHT) continue; // too bright for hostile mobs
+            float sunBrightness = worldTime.getSunBrightness();
+            if (!LightingUtil.isDarkForHostiles(skyVis, blockLight, sunBrightness, HOSTILE_MAX_LIGHT)) {
+                continue; // too bright for hostile mobs
+            }
 
             Zombie zombie = new Zombie(sx, spawnY, sz);
             entityManager.addEntity(zombie);
-            System.out.printf("[Spawn] Zombie spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, maxLight);
+            int effectiveLight = LightingUtil.computeSpawnLightLevel(skyVis, blockLight, sunBrightness);
+            System.out.printf("[Spawn] Zombie spawned at (%.1f, %d, %.1f) light=%d%n", sx, spawnY, sz, effectiveLight);
             return;
         }
     }
