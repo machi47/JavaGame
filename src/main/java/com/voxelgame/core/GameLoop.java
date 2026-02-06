@@ -513,6 +513,12 @@ public class GameLoop {
         if (player.getGameMode() == GameMode.CREATIVE) {
             player.initCreativeInventory();
         }
+        
+        // Auto-test mode: enable flight so player doesn't fall during screenshot
+        if (autoTestMode) {
+            player.setGameMode(GameMode.CREATIVE);  // Creative allows flight
+            player.toggleFlyMode();  // Enable flight
+        }
 
         // UI
         hud = new Hud();
