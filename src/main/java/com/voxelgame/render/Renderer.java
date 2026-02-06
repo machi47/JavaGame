@@ -185,6 +185,23 @@ public class Renderer {
         this.fogMode = mode % 3;
     }
 
+    // Section D: Wireframe mode
+    private boolean wireframeMode = false;
+
+    /** Toggle wireframe rendering (F12). */
+    public void toggleWireframe() {
+        wireframeMode = !wireframeMode;
+        if (wireframeMode) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            System.out.println("[Renderer] Wireframe: ON");
+        } else {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            System.out.println("[Renderer] Wireframe: OFF");
+        }
+    }
+
+    public boolean isWireframeMode() { return wireframeMode; }
+
     /** 
      * Update lighting from world time using SkySystem. Call once per frame.
      * 

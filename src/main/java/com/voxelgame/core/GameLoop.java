@@ -939,6 +939,11 @@ public class GameLoop {
         if (Input.isKeyPressed(GLFW_KEY_F11)) {
             renderer.toggleStateLogging();
         }
+        
+        // F12: Wireframe mode toggle (Section D debug)
+        if (Input.isKeyPressed(GLFW_KEY_F12)) {
+            renderer.toggleWireframe();
+        }
 
         // Handle respawn (R key when dead)
         if (player.isDead() && Input.isKeyPressed(GLFW_KEY_R)) {
