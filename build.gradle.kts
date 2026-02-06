@@ -65,7 +65,7 @@ tasks.named<JavaExec>("run") {
         jvmArgs("-XstartOnFirstThread")
     }
     // Enough heap for chunk loading + BFS light propagation
-    jvmArgs("-Xmx1g", "-Xms256m")
+    jvmArgs("-Xmx4g", "-Xms512m")
 }
 
 // Fat JAR task - bundles all dependencies into single executable JAR
