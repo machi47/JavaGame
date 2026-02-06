@@ -1788,7 +1788,8 @@ public class GameLoop {
         autoTestTimer += dt;
         switch (autoTestPhase) {
             case 0:
-                if (autoTestTimer > 3.0f) { autoTestPhase = 1; autoTestTimer = 0; }
+                // Wait for chunks to load and meshes to build (5 seconds)
+                if (autoTestTimer > 5.0f) { autoTestPhase = 1; autoTestTimer = 0; }
                 break;
             case 1:
                 Screenshot.capture(fbW, fbH);

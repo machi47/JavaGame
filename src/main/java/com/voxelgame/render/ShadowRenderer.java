@@ -285,6 +285,10 @@ public class ShadowRenderer {
      * End shadow pass. Restores default framebuffer.
      */
     public void endShadowPass() {
+        endShadowPass(0);  // Default to screen FBO for backward compatibility
+    }
+    
+    public void endShadowPass(int restoreFBO) {
         if (!initialized) return;
         
         shadowShader.unbind();
@@ -295,8 +299,8 @@ public class ShadowRenderer {
         // Restore back-face culling
         glCullFace(GL_BACK);
         
-        // Restore default framebuffer
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // Restore specified framebuffer (0 = screen, or PostFX scene FBO)
+        glBindFramebuffer(GL_FRAMEBUFFER, restoreFBO);
     }
 
     /**

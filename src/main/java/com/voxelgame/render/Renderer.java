@@ -366,6 +366,9 @@ public class Renderer {
         // Skip shadow rendering if disabled (night time)
         if (!shadowRenderer.isShadowsEnabled()) return;
         
+        // Save current FBO to restore after shadow pass (important for PostFX!)
+        int previousFBO = glGetInteger(GL_FRAMEBUFFER_BINDING);
+        
         // Disable blending and ensure depth testing
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
@@ -395,7 +398,7 @@ public class Renderer {
                 }
             }
             
-            shadowRenderer.endShadowPass();
+            shadowRenderer.endShadowPass(previousFBO);
         }
     }
 
