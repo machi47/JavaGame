@@ -19,6 +19,7 @@ public class Main {
         boolean automationMode = false;
         boolean agentServerMode = false;
         boolean autoTestMode = false;
+        boolean captureDebugViews = false;
         boolean directMode = false;
         boolean createMode = false;
         String directWorldName = null;
@@ -30,6 +31,7 @@ public class Main {
                 case "--automation" -> automationMode = true;
                 case "--agent-server" -> agentServerMode = true;
                 case "--auto-test" -> autoTestMode = true;
+                case "--capture-debug-views" -> captureDebugViews = true;
                 case "--create" -> {
                     createMode = true;
                     directMode = true;
@@ -76,7 +78,7 @@ public class Main {
         }
 
         // Automation and agent-server modes imply direct mode
-        if (automationMode || agentServerMode || autoTestMode) {
+        if (automationMode || agentServerMode || autoTestMode || captureDebugViews) {
             directMode = true;
         }
 
@@ -93,6 +95,7 @@ public class Main {
         loop.setAutomationMode(automationMode);
         loop.setAgentServerMode(agentServerMode);
         loop.setAutoTestMode(autoTestMode);
+        loop.setCaptureDebugViews(captureDebugViews);
         loop.setScriptPath(scriptPath);
 
         // Direct/create mode skips the menu

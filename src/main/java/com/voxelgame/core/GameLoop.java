@@ -164,6 +164,12 @@ public class GameLoop {
     private boolean autoTestMode = false;
     private float autoTestTimer = 0;
     private int autoTestPhase = 0;
+    
+    // Debug view capture mode (captures all 5 debug views + render state JSON)
+    private boolean captureDebugViews = false;
+    private float debugCaptureTimer = 0;
+    private int debugCapturePhase = 0;
+    private static final String[] DEBUG_VIEW_FILENAMES = {"final", "albedo", "lighting", "depth", "fog"};
 
     // Track which world is currently loaded
     private String currentWorldFolder = null;
@@ -185,6 +191,9 @@ public class GameLoop {
 
     /** Enable auto-test mode (scripted screenshot sequence, then exit). */
     public void setAutoTestMode(boolean enabled) { this.autoTestMode = enabled; }
+    
+    /** Enable debug view capture mode (captures 5 debug PNGs + render_state.json). */
+    public void setCaptureDebugViews(boolean enabled) { this.captureDebugViews = enabled; }
 
     // Track create-new-world mode (--create flag)
     private boolean createNewWorldMode = false;
@@ -1118,6 +1127,11 @@ public class GameLoop {
             updateAutoTest(w, h, dt);
         }
         
+        // Debug view capture mode
+        if (captureDebugViews) {
+            updateDebugCapture(w, h, dt);
+        }
+        
         profiler.end("Frame");
         profiler.endFrame();
     }
@@ -1803,6 +1817,85 @@ public class GameLoop {
                 chunkManager.rebuildChunks(chunks);
             }
         };
+    }
+
+    // ---- Debug View Capture ----
+    
+    private void updateDebugCapture(int w, int h, float dt) {
+        int fbW = window.getFramebufferWidth();
+        int fbH = window.getFramebufferHeight();
+        debugCaptureTimer += dt;
+        
+        // Phases: 0=warmup, 1-5=capture views 0-4, 6=save JSON, 7=exit
+        switch (debugCapturePhase) {
+            case 0:
+                // Warmup: wait for chunks to load (3 seconds)
+                if (debugCaptureTimer > 3.0f) {
+                    System.out.println("[DebugCapture] Warmup complete, starting captures...");
+                    debugCapturePhase = 1;
+                    debugCaptureTimer = 0;
+                }
+                break;
+            case 1, 2, 3, 4, 5:
+                // Set debug view and capture after short delay
+                int viewIndex = debugCapturePhase - 1;
+                renderer.setDebugView(viewIndex);
+                if (debugCaptureTimer > 0.2f) {
+                    String filename = DEBUG_VIEW_FILENAMES[viewIndex] + ".png";
+                    String path = Screenshot.captureToFile(fbW, fbH, 
+                        System.getProperty("user.home") + "/.voxelgame/debug_captures/" + filename);
+                    System.out.println("[DebugCapture] Saved: " + path);
+                    debugCapturePhase++;
+                    debugCaptureTimer = 0;
+                }
+                break;
+            case 6:
+                // Reset to normal view and save render state JSON
+                renderer.setDebugView(0);
+                saveRenderStateJson();
+                debugCapturePhase = 7;
+                debugCaptureTimer = 0;
+                break;
+            case 7:
+                if (debugCaptureTimer > 0.5f) {
+                    System.out.println("[DebugCapture] Complete. Exiting.");
+                    window.requestClose();
+                }
+                break;
+        }
+    }
+    
+    private void saveRenderStateJson() {
+        try {
+            java.io.File dir = new java.io.File(System.getProperty("user.home") + "/.voxelgame/debug_captures");
+            dir.mkdirs();
+            java.io.File file = new java.io.File(dir, "render_state.json");
+            
+            StringBuilder json = new StringBuilder();
+            json.append("{\n");
+            json.append("  \"near_plane\": ").append(player.getCamera().getNearPlane()).append(",\n");
+            json.append("  \"far_plane\": ").append(player.getCamera().getFarPlane()).append(",\n");
+            json.append("  \"sky_intensity\": ").append(worldTime != null ? worldTime.getSunBrightness() : 0).append(",\n");
+            json.append("  \"rendered_chunks\": ").append(renderer.getRenderedChunks()).append(",\n");
+            json.append("  \"smooth_lighting\": ").append(renderer.isSmoothLighting()).append(",\n");
+            json.append("  \"postfx_enabled\": ").append(postFX != null && postFX.isInitialized()).append(",\n");
+            json.append("  \"world_time_ticks\": ").append(worldTime != null ? worldTime.getWorldTick() : 0).append(",\n");
+            json.append("  \"player_y\": ").append(player.getPosition().y).append(",\n");
+            json.append("  \"notes\": {\n");
+            json.append("    \"fog_applied_in\": \"terrain shader (vFogFactor from vertex) + height fog in fragment\",\n");
+            json.append("    \"postfx_effects\": \"SSAO + ACES tonemap + gamma correction\",\n");
+            json.append("    \"srgb_framebuffer\": false,\n");
+            json.append("    \"manual_gamma\": true\n");
+            json.append("  }\n");
+            json.append("}\n");
+            
+            java.io.FileWriter writer = new java.io.FileWriter(file);
+            writer.write(json.toString());
+            writer.close();
+            System.out.println("[DebugCapture] Saved: " + file.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("[DebugCapture] Failed to save render_state.json: " + e.getMessage());
+        }
     }
 
     // ---- Auto-test ----

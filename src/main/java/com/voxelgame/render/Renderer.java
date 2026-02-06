@@ -151,6 +151,11 @@ public class Renderer {
     public int getDebugView() {
         return debugView;
     }
+    
+    /** Set debug view mode directly. */
+    public void setDebugView(int mode) {
+        this.debugView = mode % 5;
+    }
 
     /** 
      * Update lighting from world time using SkySystem. Call once per frame.
