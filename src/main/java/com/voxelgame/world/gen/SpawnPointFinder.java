@@ -4,10 +4,14 @@ import com.voxelgame.world.WorldConstants;
 
 /**
  * Finds a suitable player spawn point. Searches outward from (0,0)
- * for a grass block above sea level. Player spawns on the highest
- * solid block at that position.
+ * for a location above sea level. Spawns several blocks above the
+ * terrain height to avoid spawning inside caves/overhangs.
+ * Player will fall to the ground if in air - that's fine.
  */
 public class SpawnPointFinder {
+
+    // Extra height above terrain to avoid spawning inside mountains/caves
+    private static final int SPAWN_HEIGHT_MARGIN = 5;
 
     /**
      * Result of spawn point search.
@@ -17,6 +21,10 @@ public class SpawnPointFinder {
     /**
      * Find a good spawn point using the generation context.
      * Searches in a spiral pattern from world origin (0,0).
+     * 
+     * Requirements:
+     * - Above sea level
+     * - Terrain height + margin to avoid spawning in caves
      *
      * @param context Generation context with terrain height function
      * @return spawn point (x, y, z) where y is eye level above ground
@@ -37,17 +45,19 @@ public class SpawnPointFinder {
                     int height = context.getTerrainHeight(wx, wz);
 
                     // Must be above sea level with some margin
-                    if (height > WorldConstants.SEA_LEVEL + 2 && height < 90) {
-                        // Good spawn point — place player at eye level
-                        // Player eye height is 1.62, so spawn at surface + 1.62
-                        return new SpawnPoint(wx + 0.5, height + 1 + 1.62, wz + 0.5);
+                    // Spawn higher than terrain to avoid caves/overhangs
+                    if (height > WorldConstants.SEA_LEVEL + 2 && height < 120) {
+                        // Spawn at terrain height + margin + eye level (1.62)
+                        // Player will fall to ground if spawned in air
+                        int spawnY = height + SPAWN_HEIGHT_MARGIN;
+                        return new SpawnPoint(wx + 0.5, spawnY + 1.62, wz + 0.5);
                     }
                 }
             }
         }
 
-        // Fallback: spawn at origin at a safe height
+        // Fallback: spawn high above origin
         int fallbackHeight = context.getTerrainHeight(0, 0);
-        return new SpawnPoint(0.5, fallbackHeight + 1 + 1.62, 0.5);
+        return new SpawnPoint(0.5, fallbackHeight + SPAWN_HEIGHT_MARGIN + 1.62, 0.5);
     }
 }
