@@ -21,7 +21,9 @@ public class ChunkMesh {
 
     /**
      * Upload mesh data to GPU with explicit index array.
-     * Vertex format: [x, y, z, u, v, skyLight, blockLight] per vertex.
+     * Vertex format: [x, y, z, u, v, skyVisibility, blockLight] per vertex.
+     * skyVisibility: 0-1 sky visibility (shader computes actual sky RGB)
+     * blockLight: 0-1 block light level (shader applies warm color)
      */
     public void upload(float[] vertices, int[] indices) {
         if (indices.length == 0) {
@@ -52,7 +54,7 @@ public class ChunkMesh {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxBuf, GL_DYNAMIC_DRAW);
         MemoryUtil.memFree(idxBuf);
 
-        int stride = 7 * Float.BYTES; // x, y, z, u, v, skyLight, blockLight
+        int stride = 7 * Float.BYTES; // x, y, z, u, v, skyVisibility, blockLight
 
         // Position (location 0)
         glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
@@ -62,11 +64,11 @@ public class ChunkMesh {
         glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3L * Float.BYTES);
         glEnableVertexAttribArray(1);
 
-        // SkyLight (location 2)
+        // SkyVisibility (location 2) — 0-1 sky visibility for shader
         glVertexAttribPointer(2, 1, GL_FLOAT, false, stride, 5L * Float.BYTES);
         glEnableVertexAttribArray(2);
 
-        // BlockLight (location 3)
+        // BlockLight (location 3) — 0-1 block light level
         glVertexAttribPointer(3, 1, GL_FLOAT, false, stride, 6L * Float.BYTES);
         glEnableVertexAttribArray(3);
 
