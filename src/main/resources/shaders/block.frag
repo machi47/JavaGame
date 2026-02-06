@@ -3,6 +3,7 @@ in vec2 vTexCoord;
 in float vSkyVisibility;   // 0-1 sky visibility (with AO and directional baked in)
 in float vBlockLight;      // 0-1 block light (with AO and directional baked in)
 in float vHorizonWeight;   // 0-1 how much horizon vs zenith is visible (Phase 2)
+in vec3 vIndirectRGB;      // Phase 3: indirect lighting from probes
 in float vFogFactor;
 in vec3 vViewPos;
 in vec3 vWorldPos;
@@ -31,6 +32,9 @@ const vec3 BLOCK_LIGHT_COLOR = vec3(1.0, 0.9, 0.7);
 // Minimum ambient light (starlight) so caves aren't completely pitch black
 const float MIN_AMBIENT = 0.015;
 
+// Phase 3: Indirect light strength (controls how much probe bounce contributes)
+const float INDIRECT_STRENGTH = 0.5;
+
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragNormal; // View-space normals for SSAO (PostFX FBO)
 
@@ -42,7 +46,7 @@ void main() {
     vec3 worldNormal = normalize(cross(dFdx(vWorldPos), dFdy(vWorldPos)));
 
     // ========================================================================
-    // PHASE 2 UNIFIED RGB LIGHTING MODEL
+    // PHASE 3 UNIFIED RGB LIGHTING MODEL
     // ========================================================================
     
     // 1. SKY LIGHT: Mix zenith and horizon colors based on what's visible
@@ -61,11 +65,18 @@ void main() {
     //    Always active regardless of sky visibility or time of day
     vec3 blockRGB = BLOCK_LIGHT_COLOR * vBlockLight;
     
-    // 4. ADDITIVE COMBINATION (not max!)
-    //    This allows torches to add to moonlight, multiple light sources to stack
-    vec3 totalLight = skyRGB + sunRGB + blockRGB;
+    // 4. INDIRECT LIGHT (Phase 3): One-bounce GI from irradiance probes
+    //    This adds subtle color bleed from nearby lit surfaces into shadows
+    //    - Under trees: slight green tint from grass
+    //    - Near torches: warm bounce on nearby walls
+    //    - Under mountains at sunset: faint warm tones from horizon light
+    vec3 indirectRGB = vIndirectRGB * INDIRECT_STRENGTH;
     
-    // 5. Minimum ambient (starlight) so you can see something in caves
+    // 5. ADDITIVE COMBINATION (not max!)
+    //    This allows torches to add to moonlight, multiple light sources to stack
+    vec3 totalLight = skyRGB + sunRGB + blockRGB + indirectRGB;
+    
+    // 6. Minimum ambient (starlight) so you can see something in caves
     //    Very dim so torches are still essential
     totalLight = max(totalLight, vec3(MIN_AMBIENT));
     
@@ -76,8 +87,8 @@ void main() {
     // This simulates the way our eyes perceive colors at night (rod cells)
     if (uSkyIntensity < 0.3) {
         float nightFactor = 1.0 - uSkyIntensity / 0.3; // 0 at dusk, 1 at full night
-        // Shift toward blue, but don't overpower torch light
-        float blendStrength = nightFactor * 0.3 * (1.0 - vBlockLight);
+        // Shift toward blue, but don't overpower torch light or indirect light
+        float blendStrength = nightFactor * 0.3 * (1.0 - vBlockLight) * (1.0 - length(indirectRGB));
         totalLight = mix(totalLight, totalLight * vec3(0.7, 0.75, 1.0), blendStrength);
     }
 

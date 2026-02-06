@@ -1,5 +1,6 @@
 package com.voxelgame.world.stream;
 
+import com.voxelgame.render.SkySystem;
 import com.voxelgame.render.TextureAtlas;
 import com.voxelgame.save.SaveManager;
 import com.voxelgame.sim.Player;
@@ -7,6 +8,7 @@ import com.voxelgame.world.*;
 import com.voxelgame.world.gen.GenConfig;
 import com.voxelgame.world.gen.GenPipeline;
 import com.voxelgame.world.gen.LODGenPipeline;
+import com.voxelgame.world.lighting.ProbeManager;
 import com.voxelgame.world.lod.LODConfig;
 import com.voxelgame.world.lod.LODLevel;
 import com.voxelgame.world.lod.LODMesher;
@@ -79,6 +81,15 @@ public class ChunkManager {
     /** Frame counter for LOD update throttling. */
     private int frameCount = 0;
 
+    /** Probe manager for indirect lighting (Phase 3). */
+    private ProbeManager probeManager;
+    
+    /** Sky system for probe lighting calculations. */
+    private SkySystem skySystem;
+    
+    /** Current time of day for probe updates (0-1). */
+    private float currentTimeOfDay = 0.5f;
+
     // ---- Stats for debug overlay ----
     private volatile int lod0Count, lod1Count, lod2Count, lod3Count;
     private volatile int pendingUploads;
@@ -117,6 +128,14 @@ public class ChunkManager {
         this.mesher = new NaiveMesher(atlas);
         this.lodMesher = new LODMesher(atlas);
         this.sharedPipeline = GenPipeline.createWithConfig(seed, genConfig);
+        
+        // Initialize probe manager for indirect lighting (Phase 3)
+        this.probeManager = new ProbeManager();
+        this.skySystem = new SkySystem();
+        this.probeManager.init(skySystem);
+        
+        // Wire probe manager to mesher for sampling
+        NaiveMesher.setProbeManager(probeManager);
 
         // Create thread pool for chunk generation
         genPool = Executors.newFixedThreadPool(LODConfig.GEN_THREAD_COUNT, r -> {
@@ -166,6 +185,12 @@ public class ChunkManager {
         // 4. Update LOD levels for loaded chunks (every 15 frames for responsive transitions)
         if (frameCount % 15 == 0) {
             updateLODLevels(pcx, pcz);
+        }
+
+        // 5. Update probe manager player position and dirty probes
+        if (probeManager != null) {
+            probeManager.updatePlayerPosition(player.getPosition().x, player.getPosition().z);
+            probeManager.updateDirtyProbes(world, currentTimeOfDay);
         }
 
         boolean playerMovedChunk = (pcx != lastPlayerCX || pcz != lastPlayerCZ);
@@ -355,6 +380,10 @@ public class ChunkManager {
                             if (level == LODLevel.LOD_0) {
                                 Lighting.computeInitialSkyVisibility(loaded);
                                 Lighting.computeInitialBlockLight(loaded, world);
+                                // Create probe grid for close chunks
+                                if (probeManager != null) {
+                                    probeManager.onChunkLoaded(loaded, world, currentTimeOfDay);
+                                }
                                 submitMeshJob(loaded, pos, true);
                             } else {
                                 submitLODMeshJob(loaded, pos, level);
@@ -431,6 +460,10 @@ public class ChunkManager {
                         if (level == LODLevel.LOD_0) {
                             Lighting.computeInitialSkyVisibility(chunk);
                             Lighting.computeInitialBlockLight(chunk, world);
+                            // Create probe grid for close chunks
+                            if (probeManager != null) {
+                                probeManager.onChunkLoaded(chunk, world, currentTimeOfDay);
+                            }
                             submitMeshJob(chunk, pos, true);
                         } else {
                             // For distant chunks, skip full lighting computation
@@ -584,6 +617,11 @@ public class ChunkManager {
             Future<Chunk> pending = pendingGen.remove(pos);
             if (pending != null) pending.cancel(false);
 
+            // Notify probe manager of unload
+            if (probeManager != null) {
+                probeManager.onChunkUnloaded(pos);
+            }
+
             world.removeChunk(pos);
         }
     }
@@ -628,6 +666,11 @@ public class ChunkManager {
             Future<Chunk> pending = pendingGen.remove(pos);
             if (pending != null) pending.cancel(false);
 
+            // Notify probe manager of unload
+            if (probeManager != null) {
+                probeManager.onChunkUnloaded(pos);
+            }
+
             world.removeChunk(pos);
         }
     }
@@ -646,12 +689,18 @@ public class ChunkManager {
     /**
      * Rebuild mesh for the chunk containing the given world coordinates.
      * Also rebuilds neighbor chunks if the block is on a chunk boundary.
+     * Notifies probe manager of the block change for indirect lighting updates.
      */
     public void rebuildMeshAt(int wx, int wy, int wz) {
         int cx = Math.floorDiv(wx, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(wz, WorldConstants.CHUNK_SIZE);
         int lx = Math.floorMod(wx, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(wz, WorldConstants.CHUNK_SIZE);
+
+        // Update probes near the changed block
+        if (probeManager != null) {
+            probeManager.onBlockChanged(wx, wy, wz, world, currentTimeOfDay);
+        }
 
         Chunk chunk = world.getChunk(cx, cz);
         if (chunk != null) {
@@ -663,6 +712,19 @@ public class ChunkManager {
         if (lx == WorldConstants.CHUNK_SIZE - 1) rebuildChunk(cx + 1, cz);
         if (lz == 0) rebuildChunk(cx, cz - 1);
         if (lz == WorldConstants.CHUNK_SIZE - 1) rebuildChunk(cx, cz + 1);
+    }
+    
+    /**
+     * Update time of day for probe calculations.
+     * Call when time changes (e.g., from WorldTime).
+     * 
+     * @param timeOfDay Normalized time 0-1 where 0 = midnight, 0.5 = noon
+     */
+    public void setTimeOfDay(float timeOfDay) {
+        this.currentTimeOfDay = timeOfDay;
+        if (probeManager != null) {
+            probeManager.onTimeOfDayChanged(timeOfDay, world);
+        }
     }
 
     /**
@@ -710,6 +772,14 @@ public class ChunkManager {
             meshPool.shutdownNow();
             try { meshPool.awaitTermination(2, TimeUnit.SECONDS); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
+        if (probeManager != null) {
+            probeManager.clear();
+        }
+    }
+    
+    /** Get the probe manager (for debugging/stats). */
+    public ProbeManager getProbeManager() {
+        return probeManager;
     }
 
     // ---- Internal data classes ----

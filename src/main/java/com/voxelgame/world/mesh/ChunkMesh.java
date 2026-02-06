@@ -11,14 +11,18 @@ import static org.lwjgl.opengl.GL33.*;
  * GPU-side mesh data for a chunk. Holds VAO/VBO/EBO handles,
  * vertex count, and manages upload/disposal of vertex data.
  * 
- * Phase 2 vertex format: [x, y, z, u, v, skyVisibility, blockLight, horizonWeight]
- * - 8 floats per vertex
+ * Phase 3 vertex format: [x, y, z, u, v, skyVisibility, blockLight, horizonWeight, indirectR, indirectG, indirectB]
+ * - 11 floats per vertex
  * - horizonWeight: 0-1 how much horizon vs zenith is visible
+ * - indirectRGB: one-bounce GI from irradiance probes
  */
 public class ChunkMesh {
 
+    /** Number of floats per vertex in the Phase 3 format. */
+    public static final int VERTEX_SIZE = 11;
+    
     /** Number of floats per vertex in the Phase 2 format. */
-    public static final int VERTEX_SIZE = 8;
+    public static final int PHASE2_VERTEX_SIZE = 8;
     
     /** Number of floats per vertex in the legacy format (Phase 1). */
     public static final int LEGACY_VERTEX_SIZE = 7;
@@ -31,11 +35,12 @@ public class ChunkMesh {
 
     /**
      * Upload mesh data to GPU with explicit index array.
-     * Vertex format: [x, y, z, u, v, skyVisibility, blockLight, horizonWeight] per vertex.
+     * Vertex format: [x, y, z, u, v, skyVisibility, blockLight, horizonWeight, indirectR, indirectG, indirectB] per vertex.
      * 
      * skyVisibility: 0-1 sky visibility (shader computes actual sky RGB)
      * blockLight: 0-1 block light level (shader applies warm color)
      * horizonWeight: 0-1 how much horizon vs zenith is visible
+     * indirectRGB: one-bounce GI from irradiance probes
      */
     public void upload(float[] vertices, int[] indices) {
         if (indices.length == 0) {
@@ -67,14 +72,17 @@ public class ChunkMesh {
         MemoryUtil.memFree(idxBuf);
 
         // Detect vertex format based on array size
-        int vertexCount = indices.length > 0 ? 
-            vertices.length / VERTEX_SIZE : 0;
+        // Check if this is the new 11-float format, 8-float Phase 2 format, or legacy 7-float format
         int stride;
+        int vertexCount11 = vertices.length / VERTEX_SIZE;
+        int vertexCount8 = vertices.length / PHASE2_VERTEX_SIZE;
+        int vertexCount7 = vertices.length / LEGACY_VERTEX_SIZE;
         
-        // Check if this is the new 8-float format or legacy 7-float format
-        if (vertices.length > 0 && vertexCount > 0 && 
-            vertices.length == vertexCount * VERTEX_SIZE) {
+        if (vertices.length > 0 && vertices.length == vertexCount11 * VERTEX_SIZE) {
             stride = VERTEX_SIZE * Float.BYTES;
+            setupVertexAttributes11(stride);
+        } else if (vertices.length > 0 && vertices.length == vertexCount8 * PHASE2_VERTEX_SIZE) {
+            stride = PHASE2_VERTEX_SIZE * Float.BYTES;
             setupVertexAttributes8(stride);
         } else {
             // Legacy 7-float format (backward compatibility)
@@ -87,7 +95,45 @@ public class ChunkMesh {
     }
 
     /**
-     * Setup vertex attributes for the new 8-float format.
+     * Setup vertex attributes for the new 11-float format (Phase 3).
+     * [x, y, z, u, v, skyVisibility, blockLight, horizonWeight, indirectR, indirectG, indirectB]
+     */
+    private void setupVertexAttributes11(int stride) {
+        // Position (location 0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+        glEnableVertexAttribArray(0);
+
+        // TexCoord (location 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3L * Float.BYTES);
+        glEnableVertexAttribArray(1);
+
+        // SkyVisibility (location 2) — 0-1 sky visibility for shader
+        glVertexAttribPointer(2, 1, GL_FLOAT, false, stride, 5L * Float.BYTES);
+        glEnableVertexAttribArray(2);
+
+        // BlockLight (location 3) — 0-1 block light level
+        glVertexAttribPointer(3, 1, GL_FLOAT, false, stride, 6L * Float.BYTES);
+        glEnableVertexAttribArray(3);
+
+        // HorizonWeight (location 4) — 0-1 horizon vs zenith weight
+        glVertexAttribPointer(4, 1, GL_FLOAT, false, stride, 7L * Float.BYTES);
+        glEnableVertexAttribArray(4);
+
+        // IndirectR (location 5) — indirect lighting R from probes
+        glVertexAttribPointer(5, 1, GL_FLOAT, false, stride, 8L * Float.BYTES);
+        glEnableVertexAttribArray(5);
+
+        // IndirectG (location 6) — indirect lighting G from probes
+        glVertexAttribPointer(6, 1, GL_FLOAT, false, stride, 9L * Float.BYTES);
+        glEnableVertexAttribArray(6);
+
+        // IndirectB (location 7) — indirect lighting B from probes
+        glVertexAttribPointer(7, 1, GL_FLOAT, false, stride, 10L * Float.BYTES);
+        glEnableVertexAttribArray(7);
+    }
+
+    /**
+     * Setup vertex attributes for the Phase 2 8-float format.
      * [x, y, z, u, v, skyVisibility, blockLight, horizonWeight]
      */
     private void setupVertexAttributes8(int stride) {
@@ -110,12 +156,21 @@ public class ChunkMesh {
         // HorizonWeight (location 4) — 0-1 horizon vs zenith weight
         glVertexAttribPointer(4, 1, GL_FLOAT, false, stride, 7L * Float.BYTES);
         glEnableVertexAttribArray(4);
+
+        // IndirectRGB (locations 5-7) — default 0 for Phase 2 meshes
+        glDisableVertexAttribArray(5);
+        glDisableVertexAttribArray(6);
+        glDisableVertexAttribArray(7);
+        glVertexAttrib1f(5, 0.0f);
+        glVertexAttrib1f(6, 0.0f);
+        glVertexAttrib1f(7, 0.0f);
     }
 
     /**
      * Setup vertex attributes for the legacy 7-float format.
      * [x, y, z, u, v, skyVisibility, blockLight]
      * Sets horizonWeight to default 0.3 (balanced zenith/horizon).
+     * Sets indirectRGB to 0 (no indirect lighting).
      */
     private void setupVertexAttributes7(int stride) {
         // Position (location 0)
@@ -135,18 +190,24 @@ public class ChunkMesh {
         glEnableVertexAttribArray(3);
 
         // HorizonWeight (location 4) — default value for legacy meshes
-        // Use glVertexAttrib to set a constant default value
         glDisableVertexAttribArray(4);
         glVertexAttrib1f(4, 0.3f); // Balanced zenith/horizon by default
+
+        // IndirectRGB (locations 5-7) — default 0 for legacy meshes
+        glDisableVertexAttribArray(5);
+        glDisableVertexAttribArray(6);
+        glDisableVertexAttribArray(7);
+        glVertexAttrib1f(5, 0.0f);
+        glVertexAttrib1f(6, 0.0f);
+        glVertexAttrib1f(7, 0.0f);
     }
 
     /**
      * Upload with automatic vertex format detection.
-     * Uses 8-float format if vertexSize matches, otherwise falls back to 7-float.
      * 
      * @param vertices Vertex array
      * @param indices Index array
-     * @param vertexSize Number of floats per vertex (7 or 8)
+     * @param vertexSize Number of floats per vertex (7, 8, or 11)
      */
     public void upload(float[] vertices, int[] indices, int vertexSize) {
         if (indices.length == 0) {
@@ -179,6 +240,8 @@ public class ChunkMesh {
 
         int stride = vertexSize * Float.BYTES;
         if (vertexSize == VERTEX_SIZE) {
+            setupVertexAttributes11(stride);
+        } else if (vertexSize == PHASE2_VERTEX_SIZE) {
             setupVertexAttributes8(stride);
         } else {
             setupVertexAttributes7(stride);

@@ -1113,6 +1113,12 @@ public class GameLoop {
             float[] skyColor = worldTime.getSkyColor();
             glClearColor(skyColor[0], skyColor[1], skyColor[2], 1.0f);
             renderer.updateLighting(worldTime);
+            
+            // Update probe manager time of day for indirect lighting
+            if (chunkManager != null) {
+                float normalizedTime = com.voxelgame.render.SkySystem.worldTimeToNormalized(worldTime.getWorldTick());
+                chunkManager.setTimeOfDay(normalizedTime);
+            }
         }
 
         // Use framebuffer dimensions for rendering (HiDPI aware)
