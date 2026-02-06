@@ -909,6 +909,11 @@ public class GameLoop {
         if (Input.isKeyPressed(GLFW_KEY_F6)) {
             renderer.toggleSmoothLighting();
         }
+        
+        // Debug view toggle (F7) - cycles through render debug visualizations
+        if (Input.isKeyPressed(GLFW_KEY_F7)) {
+            renderer.cycleDebugView();
+        }
 
         // Handle respawn (R key when dead)
         if (player.isDead() && Input.isKeyPressed(GLFW_KEY_R)) {
@@ -1117,6 +1122,9 @@ public class GameLoop {
         profiler.endFrame();
     }
 
+    // Debug logging timer (logs render params once per second when debug view is active)
+    private float debugLogTimer = 0;
+    
     /**
      * Render the 3D game world and all in-game overlays.
      */
@@ -1124,6 +1132,17 @@ public class GameLoop {
         if (!gameInitialized) return;
         
         Profiler profiler = Profiler.getInstance();
+        
+        // Per-second render parameter logging when debug view is active
+        debugLogTimer += dt;
+        if (renderer.getDebugView() != 0 && debugLogTimer >= 1.0f) {
+            debugLogTimer = 0;
+            System.out.println("[RenderDebug] view=" + renderer.getDebugViewName() + 
+                " near=" + player.getCamera().getNearPlane() +
+                " far=" + player.getCamera().getFarPlane() +
+                " skyIntensity=" + (worldTime != null ? worldTime.getSunBrightness() : "N/A") +
+                " renderedChunks=" + renderer.getRenderedChunks());
+        }
 
         // Update lighting state from world time
         if (worldTime != null) {

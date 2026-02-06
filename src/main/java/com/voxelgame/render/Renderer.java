@@ -87,6 +87,10 @@ public class Renderer {
     /** Phase 6: Current normalized time of day for fog density calculation. */
     private float currentTimeOfDay = 0.5f;
 
+    /** Debug view mode (0=normal, 1=albedo, 2=lighting, 3=depth, 4=fog) */
+    private int debugView = 0;
+    private static final String[] DEBUG_VIEW_NAMES = {"Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor"};
+
     // ---- Render stats ----
     private int renderedChunks;
     private int culledChunks;
@@ -130,6 +134,22 @@ public class Renderer {
     /** Phase 6: Set smooth lighting state. */
     public void setSmoothLighting(boolean enabled) {
         this.smoothLighting = enabled;
+    }
+
+    /** Cycle debug view mode (F7). */
+    public void cycleDebugView() {
+        debugView = (debugView + 1) % 5;
+        System.out.println("[Renderer] Debug view: " + DEBUG_VIEW_NAMES[debugView]);
+    }
+
+    /** Get current debug view name. */
+    public String getDebugViewName() {
+        return DEBUG_VIEW_NAMES[debugView];
+    }
+    
+    /** Get current debug view mode. */
+    public int getDebugView() {
+        return debugView;
     }
 
     /** 
@@ -245,6 +265,11 @@ public class Renderer {
         
         // Phase 6: Smooth lighting toggle (1 = smooth interpolated, 0 = flat per-face)
         blockShader.setInt("uSmoothLighting", smoothLighting ? 1 : 0);
+        
+        // Debug view mode + depth planes for visualization
+        blockShader.setInt("uDebugView", debugView);
+        blockShader.setFloat("uNearPlane", camera.getNearPlane());
+        blockShader.setFloat("uFarPlane", camera.getFarPlane());
         
         // Phase 5: Shadow map uniforms
         if (shadowRenderer != null && shadowRenderer.isShadowsEnabled()) {

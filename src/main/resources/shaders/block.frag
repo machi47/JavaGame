@@ -53,6 +53,11 @@ uniform int uShadowsEnabled;          // Whether shadows are enabled (0 = disabl
 // Minimum ambient light (starlight) so caves aren't completely pitch black
 const float MIN_AMBIENT = 0.015;
 
+// Debug view mode (0=normal, 1=albedo, 2=lighting, 3=linear depth, 4=fog factor)
+uniform int uDebugView;
+uniform float uNearPlane;
+uniform float uFarPlane;
+
 // Phase 3: Indirect light strength (controls how much probe bounce contributes)
 const float INDIRECT_STRENGTH = 0.5;
 
@@ -249,7 +254,28 @@ void main() {
     
     vec3 finalColor = mix(litColor, uFogColor, combinedFog);
 
-    fragColor = vec4(finalColor, texColor.a * uAlpha);
+    // ========================================================================
+    // DEBUG VIEWS (F7 to cycle)
+    // ========================================================================
+    if (uDebugView == 1) {
+        // Albedo only - no lighting, no fog
+        fragColor = vec4(texColor.rgb, texColor.a * uAlpha);
+    } else if (uDebugView == 2) {
+        // Lighting only - grayscale total light contribution
+        float lightIntensity = (totalLight.r + totalLight.g + totalLight.b) / 3.0;
+        fragColor = vec4(vec3(lightIntensity), texColor.a * uAlpha);
+    } else if (uDebugView == 3) {
+        // Linear depth visualization (near=black, far=white)
+        float linearDepth = length(vViewPos);
+        float normalizedDepth = clamp(linearDepth / uFarPlane, 0.0, 1.0);
+        fragColor = vec4(vec3(normalizedDepth), 1.0);
+    } else if (uDebugView == 4) {
+        // Fog factor visualization (0=no fog=black, 1=full fog=white)
+        fragColor = vec4(vec3(combinedFog), 1.0);
+    } else {
+        // Normal rendering
+        fragColor = vec4(finalColor, texColor.a * uAlpha);
+    }
 
     // Compute view-space normal from screen-space position derivatives.
     // This gives flat per-face normals for block geometry — exactly what SSAO needs.
