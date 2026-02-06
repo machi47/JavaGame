@@ -240,19 +240,12 @@ void main() {
     vec3 litColor = texColor.rgb * totalLight;
 
     // ========================================================================
-    // PHASE 6: ENHANCED FOG WITH HEIGHT COMPONENT
+    // DISTANCE FOG ONLY (height fog removed - was causing milky look)
     // ========================================================================
-    // Distance fog (blends to sky color, hides chunk pop-in)
-    // Combined with subtle height-based fog for morning mist effect
+    // Distance fog blends to sky color, hides chunk pop-in
+    // Height fog was adding 20-30% baseline fog to all surfaces, washing out the scene
     
-    // Height fog: denser near sea level (Y=64), thinner at height
-    // exp(-y * k) gives exponential falloff with height
-    float heightFogFactor = exp(-max(vWorldPos.y - 64.0, 0.0) * 0.015);
-    
-    // Combine distance fog with height fog (height fog is subtle, max 30% contribution)
-    float combinedFog = max(vFogFactor, heightFogFactor * 0.3);
-    
-    vec3 finalColor = mix(litColor, uFogColor, combinedFog);
+    vec3 finalColor = mix(litColor, uFogColor, vFogFactor);
 
     // ========================================================================
     // DEBUG VIEWS (F7 to cycle)
@@ -271,7 +264,7 @@ void main() {
         fragColor = vec4(vec3(normalizedDepth), 1.0);
     } else if (uDebugView == 4) {
         // Fog factor visualization (0=no fog=black, 1=full fog=white)
-        fragColor = vec4(vec3(combinedFog), 1.0);
+        fragColor = vec4(vec3(vFogFactor), 1.0);
     } else {
         // Normal rendering
         fragColor = vec4(finalColor, texColor.a * uAlpha);

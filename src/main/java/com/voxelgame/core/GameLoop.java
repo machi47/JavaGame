@@ -1881,6 +1881,14 @@ public class GameLoop {
             json.append("  \"postfx_enabled\": ").append(postFX != null && postFX.isInitialized()).append(",\n");
             json.append("  \"world_time_ticks\": ").append(worldTime != null ? worldTime.getWorldTick() : 0).append(",\n");
             json.append("  \"player_y\": ").append(player.getPosition().y).append(",\n");
+            // Get fog params from LODConfig if available
+            if (chunkManager != null) {
+                var lodCfg = chunkManager.getLodConfig();
+                if (lodCfg != null) {
+                    json.append("  \"fog_start_base\": ").append(lodCfg.getFogStart()).append(",\n");
+                    json.append("  \"fog_end_base\": ").append(lodCfg.getFogEnd()).append(",\n");
+                }
+            }
             json.append("  \"notes\": {\n");
             json.append("    \"fog_applied_in\": \"terrain shader (vFogFactor from vertex) + height fog in fragment\",\n");
             json.append("    \"postfx_effects\": \"SSAO + ACES tonemap + gamma correction\",\n");
