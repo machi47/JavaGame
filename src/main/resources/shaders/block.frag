@@ -58,6 +58,9 @@ uniform int uDebugView;
 uniform float uNearPlane;
 uniform float uFarPlane;
 
+// Debug toggle: fog location (0=world fog on, 1=fog disabled for post-only mode, 2=fog off)
+uniform int uFogMode;
+
 // Phase 3: Indirect light strength (controls how much probe bounce contributes)
 const float INDIRECT_STRENGTH = 0.5;
 
@@ -244,8 +247,14 @@ void main() {
     // ========================================================================
     // Distance fog blends to sky color, hides chunk pop-in
     // Height fog was adding 20-30% baseline fog to all surfaces, washing out the scene
+    // uFogMode: 0 = world fog ON, 1 = fog disabled (for post-only), 2 = fog OFF
     
-    vec3 finalColor = mix(litColor, uFogColor, vFogFactor);
+    vec3 finalColor;
+    if (uFogMode == 0) {
+        finalColor = mix(litColor, uFogColor, vFogFactor);
+    } else {
+        finalColor = litColor;  // No fog applied
+    }
 
     // ========================================================================
     // DEBUG VIEWS (F7 to cycle)

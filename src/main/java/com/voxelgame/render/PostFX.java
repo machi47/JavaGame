@@ -61,6 +61,11 @@ public class PostFX {
     // SSAO enabled toggle
     private boolean ssaoEnabled = true;
 
+    // Gamma mode: 0 = manual gamma in shader, 1 = use GL_FRAMEBUFFER_SRGB
+    private int gammaMode = 0;
+    public static final int GAMMA_MANUAL = 0;
+    public static final int GAMMA_SRGB_FRAMEBUFFER = 1;
+
     public void init(int width, int height) {
         this.width = width;
         this.height = height;
@@ -162,10 +167,18 @@ public class PostFX {
         glClear(GL_COLOR_BUFFER_BIT);
         glDisable(GL_DEPTH_TEST);
 
+        // Handle sRGB framebuffer mode
+        if (gammaMode == GAMMA_SRGB_FRAMEBUFFER) {
+            glEnable(GL_FRAMEBUFFER_SRGB);
+        } else {
+            glDisable(GL_FRAMEBUFFER_SRGB);
+        }
+
         compositeShader.bind();
         compositeShader.setInt("uSceneColor", 0);
         compositeShader.setInt("uSSAO", 1);
         compositeShader.setInt("uSSAOEnabled", ssaoEnabled ? 1 : 0);
+        compositeShader.setInt("uGammaMode", gammaMode);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, sceneColorTex);
@@ -174,6 +187,9 @@ public class PostFX {
 
         drawQuad();
         compositeShader.unbind();
+        
+        // Always disable sRGB framebuffer after composite (don't leak state)
+        glDisable(GL_FRAMEBUFFER_SRGB);
 
         // Re-enable depth test for subsequent UI rendering
         glEnable(GL_DEPTH_TEST);
@@ -384,6 +400,18 @@ public class PostFX {
     public boolean isSSAOEnabled() { return ssaoEnabled; }
     public void setSSAOEnabled(boolean enabled) { this.ssaoEnabled = enabled; }
     public int getSceneFBO() { return sceneFBO; }
+
+    // Gamma mode controls
+    public int getGammaMode() { return gammaMode; }
+    public void setGammaMode(int mode) { this.gammaMode = mode; }
+    public void cycleGammaMode() {
+        gammaMode = (gammaMode + 1) % 2;
+        String modeName = (gammaMode == GAMMA_MANUAL) ? "MANUAL_GAMMA" : "SRGB_FRAMEBUFFER";
+        System.out.println("[PostFX] Gamma mode: " + modeName);
+    }
+    public String getGammaModeName() {
+        return (gammaMode == GAMMA_MANUAL) ? "MANUAL_GAMMA" : "SRGB_FRAMEBUFFER";
+    }
 
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * t;

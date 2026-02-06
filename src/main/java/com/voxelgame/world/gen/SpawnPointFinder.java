@@ -4,14 +4,14 @@ import com.voxelgame.world.WorldConstants;
 
 /**
  * Finds a suitable player spawn point. Searches outward from (0,0)
- * for a location above sea level. Spawns at Y=120 (well above any terrain)
- * so the player is GUARANTEED to be in open sky and will fall to ground.
+ * for a location above sea level. Now properly spawns ABOVE the actual
+ * terrain height, not at a fixed Y that could be inside mountains.
  */
 public class SpawnPointFinder {
 
-    // Fixed spawn height - well above max terrain to guarantee open sky
-    // Player will fall to the ground after spawning
-    private static final int SAFE_SPAWN_Y = 120;
+    // Spawn offset above terrain - enough to ensure clear air
+    // 2 blocks above terrain = player feet at height+2, can fall 2 blocks without damage
+    private static final int SPAWN_HEIGHT_OFFSET = 2;
 
     /**
      * Result of spawn point search.
@@ -21,10 +21,10 @@ public class SpawnPointFinder {
     /**
      * Find a good spawn point using the generation context.
      * Searches in a spiral pattern from world origin (0,0) for land above sea level.
-     * Spawns at fixed high Y to guarantee open sky - player falls to ground.
+     * Spawns ABOVE the actual terrain height at that location.
      *
      * @param context Generation context with terrain height function
-     * @return spawn point (x, y, z) where y is high above ground (player will fall)
+     * @return spawn point (x, y, z) where y is safely above ground
      */
     public static SpawnPoint find(GenContext context) {
         // Spiral search outward from origin for land above sea level
@@ -43,15 +43,21 @@ public class SpawnPointFinder {
 
                     // Must be above sea level (not in ocean)
                     if (height > WorldConstants.SEA_LEVEL + 2) {
-                        // Spawn at fixed safe Y + eye level (1.62)
-                        // Player will fall to the actual terrain
-                        return new SpawnPoint(wx + 0.5, SAFE_SPAWN_Y + 1.62, wz + 0.5);
+                        // Spawn safely above actual terrain height
+                        // Add SPAWN_HEIGHT_OFFSET to clear any trees/structures
+                        // Add eye level offset (1.62) for proper player positioning
+                        int spawnY = Math.min(height + SPAWN_HEIGHT_OFFSET, 
+                                              WorldConstants.WORLD_HEIGHT - 3);
+                        return new SpawnPoint(wx + 0.5, spawnY + 1.62, wz + 0.5);
                     }
                 }
             }
         }
 
-        // Fallback: spawn high above origin
-        return new SpawnPoint(0.5, SAFE_SPAWN_Y + 1.62, 0.5);
+        // Fallback: spawn above origin terrain
+        int fallbackHeight = context.getTerrainHeight(0, 0);
+        int fallbackY = Math.min(fallbackHeight + SPAWN_HEIGHT_OFFSET, 
+                                 WorldConstants.WORLD_HEIGHT - 3);
+        return new SpawnPoint(0.5, fallbackY + 1.62, 0.5);
     }
 }

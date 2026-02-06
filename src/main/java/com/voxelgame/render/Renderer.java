@@ -91,6 +91,13 @@ public class Renderer {
     private int debugView = 0;
     private static final String[] DEBUG_VIEW_NAMES = {"Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor"};
 
+    /** Fog mode: 0=world fog ON, 1=fog disabled (post-only), 2=fog OFF */
+    private int fogMode = 0;
+    public static final int FOG_WORLD_ONLY = 0;
+    public static final int FOG_POST_ONLY = 1;  // Disabled in world shader
+    public static final int FOG_OFF = 2;
+    private static final String[] FOG_MODE_NAMES = {"WORLD_ONLY", "POST_ONLY", "OFF"};
+
     // ---- Render stats ----
     private int renderedChunks;
     private int culledChunks;
@@ -155,6 +162,27 @@ public class Renderer {
     /** Set debug view mode directly. */
     public void setDebugView(int mode) {
         this.debugView = mode % 5;
+    }
+
+    /** Cycle fog mode (F10). */
+    public void cycleFogMode() {
+        fogMode = (fogMode + 1) % 3;
+        System.out.println("[Renderer] Fog mode: " + FOG_MODE_NAMES[fogMode]);
+    }
+
+    /** Get current fog mode name. */
+    public String getFogModeName() {
+        return FOG_MODE_NAMES[fogMode];
+    }
+
+    /** Get current fog mode. */
+    public int getFogMode() {
+        return fogMode;
+    }
+
+    /** Set fog mode directly. */
+    public void setFogMode(int mode) {
+        this.fogMode = mode % 3;
     }
 
     /** 
@@ -275,6 +303,9 @@ public class Renderer {
         blockShader.setInt("uDebugView", debugView);
         blockShader.setFloat("uNearPlane", camera.getNearPlane());
         blockShader.setFloat("uFarPlane", camera.getFarPlane());
+        
+        // Fog mode toggle for visual audit
+        blockShader.setInt("uFogMode", fogMode);
         
         // Phase 5: Shadow map uniforms
         if (shadowRenderer != null && shadowRenderer.isShadowsEnabled()) {
@@ -431,6 +462,52 @@ public class Renderer {
             shadowRenderer.endShadowPass(previousFBO);
         }
     }
+
+    // ========================================================================
+    // Section E: OpenGL State Validation (for visual audit debugging)
+    // ========================================================================
+    private long lastStateLogTime = 0;
+    private boolean stateLoggingEnabled = false;
+    
+    /** Toggle state logging (for debugging). */
+    public void toggleStateLogging() {
+        stateLoggingEnabled = !stateLoggingEnabled;
+        System.out.println("[Renderer] GL State logging: " + (stateLoggingEnabled ? "ON" : "OFF"));
+    }
+    
+    /** Log current OpenGL state (called once per second if enabled). */
+    public void logGLState(String checkpoint, int sceneFBO) {
+        if (!stateLoggingEnabled) return;
+        
+        long now = System.currentTimeMillis();
+        if (now - lastStateLogTime < 1000) return;  // Once per second
+        lastStateLogTime = now;
+        
+        int currentFBO = glGetInteger(GL_FRAMEBUFFER_BINDING);
+        int[] viewport = new int[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        boolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+        boolean depthMask = glGetBoolean(GL_DEPTH_WRITEMASK);
+        boolean blendEnabled = glIsEnabled(GL_BLEND);
+        boolean srgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
+        float[] clearColor = new float[4];
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, clearColor);
+        int currentProgram = glGetInteger(GL_CURRENT_PROGRAM);
+        
+        System.out.println("=== GL STATE [" + checkpoint + "] ===");
+        System.out.println("  FBO: " + currentFBO + " (scene=" + sceneFBO + ")");
+        System.out.println("  Viewport: " + viewport[0] + "," + viewport[1] + " " + viewport[2] + "x" + viewport[3]);
+        System.out.println("  Depth Test: " + depthTestEnabled);
+        System.out.println("  Depth Mask: " + depthMask);
+        System.out.println("  Blend: " + blendEnabled);
+        System.out.println("  sRGB Framebuffer: " + srgbEnabled);
+        System.out.printf("  Clear Color: (%.2f, %.2f, %.2f, %.2f)%n", 
+            clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+        System.out.println("  Shader Program: " + currentProgram);
+        System.out.println("===================================");
+    }
+    
+    public boolean isStateLoggingEnabled() { return stateLoggingEnabled; }
 
     public void cleanup() {
         if (blockShader != null) blockShader.cleanup();

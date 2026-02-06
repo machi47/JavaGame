@@ -923,6 +923,22 @@ public class GameLoop {
         if (Input.isKeyPressed(GLFW_KEY_F7)) {
             renderer.cycleDebugView();
         }
+        
+        // Visual audit toggles (F9, F10)
+        // F9: Gamma mode toggle (manual gamma vs sRGB framebuffer)
+        if (Input.isKeyPressed(GLFW_KEY_F9)) {
+            postFX.cycleGammaMode();
+        }
+        
+        // F10: Fog location toggle (world only, post only, off)
+        if (Input.isKeyPressed(GLFW_KEY_F10)) {
+            renderer.cycleFogMode();
+        }
+        
+        // F11: GL State logging toggle (Section E debug)
+        if (Input.isKeyPressed(GLFW_KEY_F11)) {
+            renderer.toggleStateLogging();
+        }
 
         // Handle respawn (R key when dead)
         if (player.isDead() && Input.isKeyPressed(GLFW_KEY_R)) {

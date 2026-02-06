@@ -6,6 +6,9 @@ uniform sampler2D uSceneColor;   // HDR scene color
 uniform sampler2D uSSAO;         // blurred SSAO (single channel)
 uniform int uSSAOEnabled;        // 1 = apply SSAO, 0 = skip
 
+// Debug toggles for visual audit
+uniform int uGammaMode;          // 0 = manual gamma, 1 = disabled (sRGB framebuffer mode)
+
 // ACES filmic tone mapping — better contrast and color preservation than Reinhard
 // Modified with exposure boost to counter the compression
 vec3 toneMapACES(vec3 x) {
@@ -32,18 +35,22 @@ void main() {
     }
 
     // Exposure boost: compensate for ACES compression
-    // Without this, ACES desaturates and darkens the image
-    sceneColor *= 1.8;
+    // Reduced to 1.0 (neutral) - let tonemapping handle HDR compression naturally
+    sceneColor *= 1.0;
 
     // ACES tone mapping (HDR → LDR with filmic contrast curve)
     vec3 mapped = toneMapACES(sceneColor);
 
-    // Slight saturation boost to counteract ACES desaturation
+    // Saturation boost to counteract ACES desaturation
+    // Increased to 1.35 for more vibrant colors (Minecraft-style)
     float luma = dot(mapped, vec3(0.299, 0.587, 0.114));
-    mapped = mix(vec3(luma), mapped, 1.15); // 15% saturation boost
+    mapped = mix(vec3(luma), mapped, 1.35); // 35% saturation boost
 
     // Gamma correction (linear → sRGB)
-    mapped = pow(mapped, vec3(1.0 / 2.2));
+    // uGammaMode: 0 = apply manual gamma, 1 = skip (when using GL_FRAMEBUFFER_SRGB)
+    if (uGammaMode == 0) {
+        mapped = pow(mapped, vec3(1.0 / 2.2));
+    }
 
     fragColor = vec4(mapped, 1.0);
 }
