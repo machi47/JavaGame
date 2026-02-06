@@ -22,14 +22,19 @@ import static org.lwjgl.opengl.GL33.*;
  * - LOD 1-3: Opaque-only simplified meshes
  * - Dynamic fog distance based on LOD config
  *
- * Uses two passes:
- *   1. Opaque pass  — depth write ON, blend OFF
- *   2. Transparent pass — depth write OFF, blend ON (water, etc.)
+ * Uses three passes:
+ *   1. Shadow pass  — render depth from sun's perspective (CSM)
+ *   2. Opaque pass  — depth write ON, blend OFF
+ *   3. Transparent pass — depth write OFF, blend ON (water, etc.)
  *
  * Phase 2 Sky System:
  * - Zenith/horizon color split for atmospheric depth
  * - Time-of-day intensity curves (dark nights)
  * - Sun direction and color
+ *
+ * Phase 5 Shadow System:
+ * - Cascaded shadow maps for sun/moon shadows
+ * - PCF soft shadows
  */
 public class Renderer {
 
@@ -39,6 +44,9 @@ public class Renderer {
     private TextureAtlas atlas;
     private Frustum frustum;
     private final World world;
+    
+    /** Phase 5: Shadow renderer for cascaded shadow maps. */
+    private ShadowRenderer shadowRenderer;
 
     /** Sky system for zenith/horizon colors and intensity curves. */
     private final SkySystem skySystem = new SkySystem();
@@ -86,6 +94,10 @@ public class Renderer {
         atlas = new TextureAtlas();
         atlas.init();
         frustum = new Frustum();
+        
+        // Phase 5: Initialize shadow renderer
+        shadowRenderer = new ShadowRenderer();
+        shadowRenderer.init();
     }
 
     /** Set the LOD config for dynamic fog distances. */
@@ -159,6 +171,14 @@ public class Renderer {
         float camCX = camera.getPosition().x / WorldConstants.CHUNK_SIZE;
         float camCZ = camera.getPosition().z / WorldConstants.CHUNK_SIZE;
 
+        // ========================================================================
+        // PHASE 5: SHADOW PASS - Render scene from sun's perspective
+        // ========================================================================
+        renderShadowPass(camera, windowWidth, windowHeight, camCX, camCZ, maxChunkDistSq);
+
+        // Restore viewport after shadow pass
+        glViewport(0, 0, windowWidth, windowHeight);
+
         // Bind shader and set shared uniforms
         blockShader.bind();
         blockShader.setMat4("uProjection", projection);
@@ -185,6 +205,34 @@ public class Renderer {
         
         // Phase 4: Pass game time for torch flicker animation
         blockShader.setFloat("uTime", gameTime);
+        
+        // Phase 5: Shadow map uniforms
+        if (shadowRenderer != null && shadowRenderer.isShadowsEnabled()) {
+            blockShader.setInt("uShadowsEnabled", 1);
+            
+            // Bind shadow textures to texture units 4, 5, 6
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, shadowRenderer.getShadowTexture(0));
+            blockShader.setInt("uShadowMap0", 4);
+            
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, shadowRenderer.getShadowTexture(1));
+            blockShader.setInt("uShadowMap1", 5);
+            
+            glActiveTexture(GL_TEXTURE6);
+            glBindTexture(GL_TEXTURE_2D, shadowRenderer.getShadowTexture(2));
+            blockShader.setInt("uShadowMap2", 6);
+            
+            // Light-space matrices
+            blockShader.setMat4("uLightViewProj0", shadowRenderer.getLightViewProj(0));
+            blockShader.setMat4("uLightViewProj1", shadowRenderer.getLightViewProj(1));
+            blockShader.setMat4("uLightViewProj2", shadowRenderer.getLightViewProj(2));
+            
+            // Restore texture unit 0 for atlas
+            glActiveTexture(GL_TEXTURE0);
+        } else {
+            blockShader.setInt("uShadowsEnabled", 0);
+        }
 
         atlas.bind(0);
 
@@ -259,9 +307,61 @@ public class Renderer {
     public TextureAtlas getAtlas() { return atlas; }
     public int getRenderedChunks() { return renderedChunks; }
     public int getCulledChunks() { return culledChunks; }
+    
+    /** Get shadow renderer for debug visualization. */
+    public ShadowRenderer getShadowRenderer() { return shadowRenderer; }
+
+    /**
+     * Phase 5: Render shadow pass for all cascades.
+     * Renders scene from sun's perspective into shadow map depth textures.
+     */
+    private void renderShadowPass(Camera camera, int windowWidth, int windowHeight,
+                                  float camCX, float camCZ, float maxChunkDistSq) {
+        if (shadowRenderer == null) return;
+        
+        // Update cascade matrices based on camera and sun direction
+        float aspect = (float) windowWidth / Math.max(windowHeight, 1);
+        shadowRenderer.updateCascades(camera, sunDirection, camera.getFov(), aspect);
+        
+        // Skip shadow rendering if disabled (night time)
+        if (!shadowRenderer.isShadowsEnabled()) return;
+        
+        // Disable blending and ensure depth testing
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(true);
+        
+        // Render each cascade
+        for (int cascade = 0; cascade < ShadowRenderer.NUM_CASCADES; cascade++) {
+            shadowRenderer.beginShadowPass(cascade);
+            
+            // Render all visible chunks (simple culling - could be optimized with cascade frustum)
+            for (var entry : world.getChunkMap().entrySet()) {
+                ChunkPos pos = entry.getKey();
+                Chunk chunk = entry.getValue();
+                
+                // Basic distance cull for shadow pass
+                float cdx = pos.x() + 0.5f - camCX;
+                float cdz = pos.z() + 0.5f - camCZ;
+                
+                // Use larger distance for shadow pass (shadows can come from further away)
+                float shadowDistSq = maxChunkDistSq * 2.0f;
+                if (cdx * cdx + cdz * cdz > shadowDistSq) continue;
+                
+                // Render opaque mesh for shadows
+                ChunkMesh mesh = chunk.getRenderMesh();
+                if (mesh != null && !mesh.isEmpty()) {
+                    mesh.renderDepthOnly();
+                }
+            }
+            
+            shadowRenderer.endShadowPass();
+        }
+    }
 
     public void cleanup() {
         if (blockShader != null) blockShader.cleanup();
         if (atlas != null) atlas.cleanup();
+        if (shadowRenderer != null) shadowRenderer.cleanup();
     }
 }

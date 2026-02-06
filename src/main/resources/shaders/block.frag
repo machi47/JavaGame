@@ -29,6 +29,16 @@ uniform float uTime;            // Game time in seconds (for flicker animation)
 uniform vec3 uSkyColor;         // Fog/ambient sky color
 uniform float uSunBrightness;   // Overall sun brightness (0-1)
 
+// Phase 5: Shadow map uniforms
+uniform sampler2DShadow uShadowMap0;  // Near cascade (0-16 blocks)
+uniform sampler2DShadow uShadowMap1;  // Mid cascade (16-64 blocks)
+uniform sampler2DShadow uShadowMap2;  // Far cascade (64-256 blocks)
+uniform mat4 uLightViewProj0;         // Light-space matrix for cascade 0
+uniform mat4 uLightViewProj1;         // Light-space matrix for cascade 1
+uniform mat4 uLightViewProj2;         // Light-space matrix for cascade 2
+uniform vec3 uCameraPos;              // Camera position for cascade selection
+uniform int uShadowsEnabled;          // Whether shadows are enabled (0 = disabled at night)
+
 // Minimum ambient light (starlight) so caves aren't completely pitch black
 const float MIN_AMBIENT = 0.015;
 
@@ -38,8 +48,85 @@ const float INDIRECT_STRENGTH = 0.5;
 // Phase 4: Legacy warm color for backward compatibility (when G/B = 0)
 const vec3 LEGACY_BLOCK_LIGHT_COLOR = vec3(1.0, 0.9, 0.7);
 
+// Phase 5: Cascade split distances (must match ShadowRenderer.java)
+const float CASCADE_SPLIT_0 = 16.0;
+const float CASCADE_SPLIT_1 = 64.0;
+const float CASCADE_SPLIT_2 = 256.0;
+
 layout(location = 0) out vec4 fragColor;
 layout(location = 1) out vec4 fragNormal; // View-space normals for SSAO (PostFX FBO)
+
+// Phase 5: Sample shadow map with 3x3 PCF for soft shadows
+float sampleShadowPCF(sampler2DShadow shadowMap, vec3 projCoords) {
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(2048.0); // Shadow map size
+    
+    // 3x3 PCF kernel
+    for (int x = -1; x <= 1; x++) {
+        for (int y = -1; y <= 1; y++) {
+            vec3 offset = vec3(vec2(x, y) * texelSize, 0.0);
+            shadow += texture(shadowMap, projCoords + offset);
+        }
+    }
+    return shadow / 9.0;
+}
+
+// Phase 5: Calculate shadow factor (1.0 = fully lit, 0.0 = fully in shadow)
+float calculateShadow(vec3 worldPos, vec3 worldNormal) {
+    if (uShadowsEnabled == 0) return 1.0;
+    
+    // Skip shadow for surfaces facing away from sun
+    float NdotL = dot(worldNormal, uSunDirection);
+    if (NdotL < 0.0) return 0.0; // Back-facing = self-shadowed
+    
+    // Distance from camera to select cascade
+    float dist = length(worldPos - uCameraPos);
+    
+    // Select cascade and corresponding matrix/texture
+    mat4 lightVP;
+    vec3 projCoords;
+    float shadow;
+    
+    // Slope-based bias to reduce shadow acne (steeper angles need more bias)
+    float bias = max(0.005 * (1.0 - NdotL), 0.001);
+    
+    if (dist < CASCADE_SPLIT_0) {
+        // Near cascade - highest detail
+        vec4 lightSpacePos = uLightViewProj0 * vec4(worldPos, 1.0);
+        projCoords = lightSpacePos.xyz / lightSpacePos.w;
+        projCoords = projCoords * 0.5 + 0.5;
+        if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || 
+            projCoords.y < 0.0 || projCoords.y > 1.0) return 1.0;
+        projCoords.z -= bias;
+        shadow = sampleShadowPCF(uShadowMap0, projCoords);
+    }
+    else if (dist < CASCADE_SPLIT_1) {
+        // Mid cascade
+        vec4 lightSpacePos = uLightViewProj1 * vec4(worldPos, 1.0);
+        projCoords = lightSpacePos.xyz / lightSpacePos.w;
+        projCoords = projCoords * 0.5 + 0.5;
+        if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || 
+            projCoords.y < 0.0 || projCoords.y > 1.0) return 1.0;
+        projCoords.z -= bias;
+        shadow = sampleShadowPCF(uShadowMap1, projCoords);
+    }
+    else if (dist < CASCADE_SPLIT_2) {
+        // Far cascade
+        vec4 lightSpacePos = uLightViewProj2 * vec4(worldPos, 1.0);
+        projCoords = lightSpacePos.xyz / lightSpacePos.w;
+        projCoords = projCoords * 0.5 + 0.5;
+        if (projCoords.z > 1.0 || projCoords.x < 0.0 || projCoords.x > 1.0 || 
+            projCoords.y < 0.0 || projCoords.y > 1.0) return 1.0;
+        projCoords.z -= bias * 2.0; // More bias for far cascade
+        shadow = sampleShadowPCF(uShadowMap2, projCoords);
+    }
+    else {
+        // Beyond all cascades - no shadow
+        return 1.0;
+    }
+    
+    return shadow;
+}
 
 // Phase 4: Subtle flicker function for torch-lit surfaces
 // Uses procedural noise based on world position + time
@@ -72,8 +159,10 @@ void main() {
     // 2. SUN LIGHT: Directional sunlight (N·L), only for sky-visible surfaces
     //    Surfaces in caves (visibility=0) don't get any sun contribution
     //    Sun color changes with time of day (warm white → orange → off)
+    //    Phase 5: Apply shadow mapping to sun contribution
     float NdotL = max(dot(worldNormal, uSunDirection), 0.0);
-    vec3 sunRGB = uSunColor * NdotL * uSunIntensity * vSkyVisibility * 0.6;
+    float shadow = calculateShadow(vWorldPos, worldNormal);
+    vec3 sunRGB = uSunColor * NdotL * uSunIntensity * vSkyVisibility * shadow * 0.6;
     
     // 3. BLOCK LIGHT: Phase 4 RGB light from colored sources
     //    Torches = warm orange, lava = deep red, redstone = dim red

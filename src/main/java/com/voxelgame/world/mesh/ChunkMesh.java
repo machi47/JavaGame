@@ -363,6 +363,18 @@ public class ChunkMesh {
         glBindVertexArray(0);
     }
 
+    /**
+     * Draw mesh for shadow pass (depth only).
+     * Same as draw() but semantically separate for clarity.
+     * The shadow shader only uses position (location 0), so no texture binding needed.
+     */
+    public void renderDepthOnly() {
+        if (!uploaded || indexCount == 0) return;
+        glBindVertexArray(vao);
+        glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
     public void dispose() {
         if (uploaded) {
             glDeleteVertexArrays(vao);
