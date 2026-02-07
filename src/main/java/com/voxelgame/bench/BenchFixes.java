@@ -10,7 +10,7 @@ public class BenchFixes {
     public static boolean FIX_MESH_PRIMITIVE_BUFFERS = false;
     
     // Fix B: Use packed long keys instead of new ChunkPos() per lookup
-    public static boolean FIX_CHUNKPOS_PACKED = false;
+    public static boolean FIX_CHUNKPOS_NO_ALLOC = false;
     
     // Fix C: Async region IO instead of sync writes on main thread
     public static boolean FIX_ASYNC_REGION_IO = false;
@@ -27,14 +27,14 @@ public class BenchFixes {
         
         switch (key) {
             case "FIX_MESH_PRIMITIVE_BUFFERS" -> FIX_MESH_PRIMITIVE_BUFFERS = value;
-            case "FIX_CHUNKPOS_PACKED" -> FIX_CHUNKPOS_PACKED = value;
+            case "FIX_CHUNKPOS_NO_ALLOC" -> FIX_CHUNKPOS_NO_ALLOC = value;
             case "FIX_ASYNC_REGION_IO" -> FIX_ASYNC_REGION_IO = value;
         }
     }
     
     public static String status() {
         return String.format(
-            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_CHUNKPOS_PACKED=%s, FIX_ASYNC_REGION_IO=%s",
-            FIX_MESH_PRIMITIVE_BUFFERS, FIX_CHUNKPOS_PACKED, FIX_ASYNC_REGION_IO);
+            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_CHUNKPOS_NO_ALLOC=%s, FIX_ASYNC_REGION_IO=%s",
+            FIX_MESH_PRIMITIVE_BUFFERS, FIX_CHUNKPOS_NO_ALLOC, FIX_ASYNC_REGION_IO);
     }
 }

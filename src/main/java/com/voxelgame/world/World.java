@@ -1,5 +1,7 @@
 package com.voxelgame.world;
 
+import com.voxelgame.bench.BenchFixes;
+
 import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -9,13 +11,35 @@ import java.util.concurrent.ConcurrentHashMap;
 public class World implements WorldAccess {
 
     private final ConcurrentHashMap<ChunkPos, Chunk> chunks = new ConcurrentHashMap<>();
+    
+    // Fix B: Parallel map using packed long keys (no allocation on lookup)
+    private final ConcurrentHashMap<Long, Chunk> chunksByKey = new ConcurrentHashMap<>();
+    
+    /** Pack chunk coordinates into a long key (no allocation). */
+    public static long packChunkKey(int cx, int cz) {
+        return (((long) cx) << 32) | (cz & 0xFFFFFFFFL);
+    }
+    
+    /** Get chunk by packed key (no allocation). */
+    public Chunk getChunkByKey(long key) {
+        return chunksByKey.get(key);
+    }
+    
+    /** Get chunk by chunk coords (uses packed key when FIX_CHUNKPOS_NO_ALLOC is enabled). */
+    private Chunk getChunkInternal(int cx, int cz) {
+        if (BenchFixes.FIX_CHUNKPOS_NO_ALLOC) {
+            return chunksByKey.get(packChunkKey(cx, cz));
+        } else {
+            return chunks.get(new ChunkPos(cx, cz));
+        }
+    }
 
     @Override
     public int getBlock(int x, int y, int z) {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 0;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -28,7 +52,7 @@ public class World implements WorldAccess {
         if (y < 0) return 0.0f;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 1.0f; // assume full sky visibility for unloaded chunks
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -39,7 +63,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -53,7 +77,7 @@ public class World implements WorldAccess {
         if (y < 0) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 15; // assume full sun for unloaded chunks
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -65,7 +89,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 0;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -76,7 +100,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -87,7 +111,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -98,7 +122,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -114,7 +138,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return new float[] {0, 0, 0};
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return new float[] {0, 0, 0};
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -126,7 +150,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 0;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -138,7 +162,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 0;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -150,7 +174,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return 0;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -161,7 +185,7 @@ public class World implements WorldAccess {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return;
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
-        Chunk chunk = chunks.get(new ChunkPos(cx, cz));
+        Chunk chunk = getChunkInternal(cx, cz);
         if (chunk == null) return;
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
@@ -170,20 +194,26 @@ public class World implements WorldAccess {
 
     @Override
     public Chunk getChunk(int cx, int cz) {
-        return chunks.get(new ChunkPos(cx, cz));
+        return getChunkInternal(cx, cz);
     }
 
     @Override
     public boolean isLoaded(int cx, int cz) {
-        return chunks.containsKey(new ChunkPos(cx, cz));
+        if (BenchFixes.FIX_CHUNKPOS_NO_ALLOC) {
+            return chunksByKey.containsKey(packChunkKey(cx, cz));
+        } else {
+            return chunks.containsKey(new ChunkPos(cx, cz));
+        }
     }
 
     public void addChunk(ChunkPos pos, Chunk chunk) {
         chunks.put(pos, chunk);
+        chunksByKey.put(packChunkKey(pos.x(), pos.z()), chunk);
     }
 
     public void removeChunk(ChunkPos pos) {
         Chunk chunk = chunks.remove(pos);
+        chunksByKey.remove(packChunkKey(pos.x(), pos.z()));
         if (chunk != null) {
             chunk.dispose();
         }
