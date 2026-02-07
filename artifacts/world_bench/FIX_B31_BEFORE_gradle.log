@@ -1,0 +1,129 @@
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :run
+VoxelGame starting...
+TextureAtlas loaded from terrain.png: 128x256 (128 tiles)
+ShadowRenderer initialized: 3 cascades @ 2048x2048
+[GameMode] SURVIVAL -> CREATIVE (invuln=true, flight=true)
+[Difficulty] NORMAL -> NORMAL (env=1.0x, mob=1.0x)
+Restored player inventory (9 used slots)
+Loaded world 'default' (seed=12345)
+[ChestManager] Loaded 0 chests
+[FurnaceManager] Loaded 0 furnaces
+[2026-02-07T20:16:56.792601Z] [Benchmark] Started
+[2026-02-07T20:16:56.793903Z] [Benchmark] Profile: BEFORE
+[2026-02-07T20:16:56.794435Z] [Benchmark] Seed: 42
+[2026-02-07T20:16:56.794464Z] [Benchmark] Duration: 60s
+[2026-02-07T20:16:56.794501Z] [Benchmark] Output: artifacts/world_bench/FIX_B31_BEFORE
+[GameMode] CREATIVE -> CREATIVE (invuln=true, flight=true)
+Game started — world: default
+VoxelGame initialized — direct world: default
+Mesh building failed for ChunkPos[x=-3, z=-2]: Index -1 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=-3, z=-3]: null
+Mesh building failed for ChunkPos[x=-5, z=-3]: null
+Mesh building failed for ChunkPos[x=-5, z=-2]: null
+Mesh building failed for ChunkPos[x=-1, z=-2]: null
+Mesh building failed for ChunkPos[x=-1, z=-3]: null
+Mesh building failed for ChunkPos[x=-4, z=-4]: null
+Mesh building failed for ChunkPos[x=-3, z=-4]: null
+Mesh building failed for ChunkPos[x=-2, z=-4]: null
+Mesh building failed for ChunkPos[x=-1, z=-4]: null
+Mesh building failed for ChunkPos[x=0, z=-4]: null
+Mesh building failed for ChunkPos[x=0, z=-1]: null
+Mesh building failed for ChunkPos[x=0, z=-2]: null
+Mesh building failed for ChunkPos[x=-5, z=0]: null
+Mesh building failed for ChunkPos[x=-4, z=-5]: null
+Mesh building failed for ChunkPos[x=-3, z=-5]: null
+Mesh building failed for ChunkPos[x=-2, z=-5]: null
+Mesh building failed for ChunkPos[x=-1, z=-5]: null
+Mesh building failed for ChunkPos[x=0, z=-5]: null
+Mesh building failed for ChunkPos[x=1, z=-5]: null
+Mesh building failed for ChunkPos[x=-6, z=-4]: null
+Mesh building failed for ChunkPos[x=-6, z=-5]: null
+Mesh building failed for ChunkPos[x=-6, z=0]: null
+Mesh building failed for ChunkPos[x=-6, z=-1]: null
+Mesh building failed for ChunkPos[x=-5, z=-6]: null
+Mesh building failed for ChunkPos[x=-6, z=-2]: null
+Mesh building failed for ChunkPos[x=-4, z=-6]: null
+Mesh building failed for ChunkPos[x=-3, z=-6]: null
+Mesh building failed for ChunkPos[x=-2, z=-6]: null
+Mesh building failed for ChunkPos[x=-1, z=-6]: null
+Mesh building failed for ChunkPos[x=0, z=-6]: null
+Mesh building failed for ChunkPos[x=1, z=-6]: null
+Mesh building failed for ChunkPos[x=2, z=-6]: null
+Mesh building failed for ChunkPos[x=-7, z=-6]: null
+Mesh building failed for ChunkPos[x=-7, z=-5]: null
+Mesh building failed for ChunkPos[x=-7, z=-1]: null
+Mesh building failed for ChunkPos[x=-7, z=-2]: null
+Mesh building failed for ChunkPos[x=-7, z=-3]: null
+Mesh building failed for ChunkPos[x=-7, z=1]: null
+Mesh building failed for ChunkPos[x=-7, z=2]: null
+Mesh building failed for ChunkPos[x=-6, z=-7]: null
+Mesh building failed for ChunkPos[x=-5, z=-7]: null
+Mesh building failed for ChunkPos[x=-4, z=-7]: null
+Mesh building failed for ChunkPos[x=-3, z=-7]: null
+Mesh building failed for ChunkPos[x=-2, z=-7]: null
+Mesh building failed for ChunkPos[x=-1, z=-7]: null
+Mesh building failed for ChunkPos[x=0, z=-7]: null
+Mesh building failed for ChunkPos[x=1, z=-7]: null
+Mesh building failed for ChunkPos[x=3, z=-6]: null
+Mesh building failed for ChunkPos[x=-8, z=-6]: null
+Mesh building failed for ChunkPos[x=-8, z=-2]: null
+Mesh building failed for ChunkPos[x=-8, z=-4]: null
+Mesh building failed for ChunkPos[x=-8, z=-3]: null
+Mesh building failed for ChunkPos[x=-8, z=1]: null
+Mesh building failed for ChunkPos[x=-8, z=2]: null
+Mesh building failed for ChunkPos[x=-8, z=0]: null
+Mesh building failed for ChunkPos[x=-8, z=4]: null
+Mesh building failed for ChunkPos[x=2, z=-7]: null
+Mesh building failed for ChunkPos[x=4, z=4]: null
+Mesh building failed for ChunkPos[x=-9, z=-2]: null
+Mesh building failed for ChunkPos[x=-9, z=-3]: null
+Mesh building failed for ChunkPos[x=-9, z=-4]: null
+Mesh building failed for ChunkPos[x=-9, z=1]: null
+Mesh building failed for ChunkPos[x=-9, z=2]: null
+Mesh building failed for ChunkPos[x=-9, z=0]: null
+Mesh building failed for ChunkPos[x=-5, z=-8]: null
+Mesh building failed for ChunkPos[x=-4, z=-8]: null
+Mesh building failed for ChunkPos[x=-3, z=-8]: null
+Mesh building failed for ChunkPos[x=-2, z=-8]: null
+Mesh building failed for ChunkPos[x=-1, z=-8]: null
+Mesh building failed for ChunkPos[x=0, z=-8]: null
+Mesh building failed for ChunkPos[x=1, z=-8]: null
+Mesh building failed for ChunkPos[x=-10, z=-1]: null
+Mesh building failed for ChunkPos[x=-2, z=-9]: null
+[Spawn] Pig spawned at (-24.9, 93, 31.5) light=15
+[ChunkPerf] loaded=1313 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=181/163/350/616 uploads=6
+[Spawn] Cow spawned at (-39.9, 73, -28.7) light=15
+[Spawn] Chicken spawned at (15.9, 92, 1.4) light=15
+[ChunkPerf] loaded=1382 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=168/162/335/710 uploads=0
+[Spawn] Cow spawned at (-41.9, 72, -61.2) light=15
+[Spawn] Chicken spawned at (4.9, 86, -15.6) light=15
+[ChunkPerf] loaded=1381 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=169/178/312/715 uploads=2
+[Despawn] COW despawned at (-41.2, 73.0, -28.8) — too far
+[Despawn] COW despawned at (-41.3, 72.0, -63.1) — too far
+[Despawn] CHICKEN despawned at (4.9, 86.0, -15.6) — too far
+[Spawn] Cow spawned at (-24.2, 98, 79.1) light=15
+[Spawn] Pig spawned at (8.8, 85, -57.5) light=15
+[ChunkPerf] loaded=1381 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=168/171/306/737 uploads=0
+[Despawn] PIG despawned at (-23.5, 93.0, 27.5) — too far
+[Despawn] COW despawned at (-26.6, 97.0, 77.5) — too far
+[Despawn] PIG despawned at (10.7, 85.0, -55.1) — too far
+[Spawn] Sheep spawned at (49.7, 72, -36.3) light=15
+[Spawn] Pig spawned at (-34.3, 81, -29.0) light=15
+[ChunkPerf] loaded=1381 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=168/171/317/725 uploads=0
+[Spawn] Chicken spawned at (-4.5, 83, -55.0) light=15
+[Spawn] Cow spawned at (17.6, 72, 71.0) light=15
+[ChunkPerf] loaded=1382 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=168/170/318/723 uploads=0
+[2026-02-07T20:17:56.796070Z] [Benchmark] Complete. Writing results...
+[2026-02-07T20:17:56.814942Z] [Benchmark] Results written to: artifacts/world_bench/FIX_B31_BEFORE
+[Benchmark] Complete. Exiting.
+Saving world on exit...
+[FurnaceManager] Saved 0 furnaces
+[ChestManager] Saved 0 chests
+Saved 1370 chunks on exit
+
+BUILD SUCCESSFUL in 1m 4s
+3 actionable tasks: 1 executed, 2 up-to-date

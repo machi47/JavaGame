@@ -483,16 +483,21 @@ public class ChunkManager {
     /**
      * Submit a full mesh building job to the background mesh pool.
      * Uses meshAllRaw (CPU-only, no GL calls) on background threads.
-     * When FIX_B3_SNAPSHOT_MESH is enabled, creates a snapshot upfront to eliminate map lookups.
+     * When FIX_B3_SNAPSHOT_MESH is enabled, creates a snapshot to eliminate map lookups.
+     * When FIX_B31_SNAPSHOT_OFFTHREAD is also enabled, snapshot is created on worker thread.
      */
     private void submitMeshJob(Chunk chunk, ChunkPos pos, boolean rebuildNeighbors) {
         if (meshingInProgress.contains(pos)) return;
         meshingInProgress.add(pos);
 
-        // FIX_B3: Create snapshot on main thread (few map lookups), then mesh with zero lookups
+        final boolean useSnapshot = com.voxelgame.bench.BenchFixes.FIX_B3_SNAPSHOT_MESH;
+        final boolean offThread = com.voxelgame.bench.BenchFixes.FIX_B31_SNAPSHOT_OFFTHREAD;
+
+        // FIX_B3 + !B31: Create snapshot on main thread
+        // FIX_B3 + B31: Defer snapshot to worker thread
         final com.voxelgame.world.WorldAccess meshWorld;
-        if (com.voxelgame.bench.BenchFixes.FIX_B3_SNAPSHOT_MESH) {
-            // Resolve neighbors once (O(4) map lookups)
+        if (useSnapshot && !offThread) {
+            // Main thread snapshot (original B3 behavior)
             Chunk nx = world.getChunk(pos.x() - 1, pos.z());
             Chunk px = world.getChunk(pos.x() + 1, pos.z());
             Chunk nz = world.getChunk(pos.x(), pos.z() - 1);
@@ -500,12 +505,30 @@ public class ChunkManager {
             var snapshot = new com.voxelgame.world.mesh.NeighborhoodSnapshot(chunk, nx, px, nz, pz);
             meshWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(snapshot);
         } else {
-            meshWorld = world;
+            meshWorld = null; // Will be resolved in worker if B31 is on
         }
+
+        // Capture world reference for worker (needed for B31 or non-snapshot mode)
+        final World worldRef = world;
+        final int cx = pos.x(), cz = pos.z();
 
         meshPool.submit(() -> {
             try {
-                RawMeshResult raw = mesher.meshAllRaw(chunk, meshWorld);
+                com.voxelgame.world.WorldAccess actualWorld;
+                if (useSnapshot && offThread) {
+                    // FIX_B31: Create snapshot on worker thread (O(4) map reads, then zero)
+                    Chunk nx = worldRef.getChunk(cx - 1, cz);
+                    Chunk px = worldRef.getChunk(cx + 1, cz);
+                    Chunk nz = worldRef.getChunk(cx, cz - 1);
+                    Chunk pz = worldRef.getChunk(cx, cz + 1);
+                    var snapshot = new com.voxelgame.world.mesh.NeighborhoodSnapshot(chunk, nx, px, nz, pz);
+                    actualWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(snapshot);
+                } else if (meshWorld != null) {
+                    actualWorld = meshWorld; // Pre-built snapshot from main thread
+                } else {
+                    actualWorld = worldRef; // No snapshot mode
+                }
+                RawMeshResult raw = mesher.meshAllRaw(chunk, actualWorld);
                 uploadQueue.add(new MeshUpload(chunk, pos, raw));
             } catch (Exception e) {
                 System.err.println("Mesh building failed for " + pos + ": " + e.getMessage());
@@ -525,9 +548,9 @@ public class ChunkManager {
                     !meshingInProgress.contains(nPos)) {
                     meshingInProgress.add(nPos);
                     
-                    // FIX_B3: Create snapshot for neighbor mesh too
+                    // FIX_B3/B31: Handle snapshot creation based on toggles
                     final com.voxelgame.world.WorldAccess nMeshWorld;
-                    if (com.voxelgame.bench.BenchFixes.FIX_B3_SNAPSHOT_MESH) {
+                    if (useSnapshot && !offThread) {
                         Chunk nnx = world.getChunk(nPos.x() - 1, nPos.z());
                         Chunk npx = world.getChunk(nPos.x() + 1, nPos.z());
                         Chunk nnz = world.getChunk(nPos.x(), nPos.z() - 1);
@@ -535,12 +558,26 @@ public class ChunkManager {
                         var nSnap = new com.voxelgame.world.mesh.NeighborhoodSnapshot(neighbor, nnx, npx, nnz, npz);
                         nMeshWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(nSnap);
                     } else {
-                        nMeshWorld = world;
+                        nMeshWorld = null;
                     }
                     
+                    final int ncx = nPos.x(), ncz = nPos.z();
                     meshPool.submit(() -> {
                         try {
-                            RawMeshResult raw = mesher.meshAllRaw(neighbor, nMeshWorld);
+                            com.voxelgame.world.WorldAccess actualWorld;
+                            if (useSnapshot && offThread) {
+                                Chunk nnx = worldRef.getChunk(ncx - 1, ncz);
+                                Chunk npx = worldRef.getChunk(ncx + 1, ncz);
+                                Chunk nnz = worldRef.getChunk(ncx, ncz - 1);
+                                Chunk npz = worldRef.getChunk(ncx, ncz + 1);
+                                var nSnap = new com.voxelgame.world.mesh.NeighborhoodSnapshot(neighbor, nnx, npx, nnz, npz);
+                                actualWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(nSnap);
+                            } else if (nMeshWorld != null) {
+                                actualWorld = nMeshWorld;
+                            } else {
+                                actualWorld = worldRef;
+                            }
+                            RawMeshResult raw = mesher.meshAllRaw(neighbor, actualWorld);
                             uploadQueue.add(new MeshUpload(neighbor, nPos, raw));
                         } catch (Exception e) {
                             // Neighbor mesh rebuild failure is non-critical

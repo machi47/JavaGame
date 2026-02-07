@@ -18,6 +18,9 @@ public class BenchFixes {
     // Fix B3: Snapshot-based meshing (resolve neighbors once, then pure array access)
     public static boolean FIX_B3_SNAPSHOT_MESH = false;
     
+    // Fix B3.1: Move snapshot creation off main thread (worker resolves neighbors at job start)
+    public static boolean FIX_B31_SNAPSHOT_OFFTHREAD = false;
+    
     // Fix C: Async region IO instead of sync writes on main thread
     public static boolean FIX_ASYNC_REGION_IO = false;
     
@@ -36,13 +39,14 @@ public class BenchFixes {
             case "FIX_CHUNKPOS_NO_ALLOC" -> FIX_CHUNKPOS_NO_ALLOC = value;
             case "FIX_B2_PRIMITIVE_MAP" -> FIX_B2_PRIMITIVE_MAP = value;
             case "FIX_B3_SNAPSHOT_MESH" -> FIX_B3_SNAPSHOT_MESH = value;
+            case "FIX_B31_SNAPSHOT_OFFTHREAD" -> FIX_B31_SNAPSHOT_OFFTHREAD = value;
             case "FIX_ASYNC_REGION_IO" -> FIX_ASYNC_REGION_IO = value;
         }
     }
     
     public static String status() {
         return String.format(
-            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_B3_SNAPSHOT_MESH=%s, FIX_ASYNC_REGION_IO=%s",
-            FIX_MESH_PRIMITIVE_BUFFERS, FIX_B3_SNAPSHOT_MESH, FIX_ASYNC_REGION_IO);
+            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_B3_SNAPSHOT_MESH=%s, FIX_B31_SNAPSHOT_OFFTHREAD=%s, FIX_ASYNC_REGION_IO=%s",
+            FIX_MESH_PRIMITIVE_BUFFERS, FIX_B3_SNAPSHOT_MESH, FIX_B31_SNAPSHOT_OFFTHREAD, FIX_ASYNC_REGION_IO);
     }
 }
