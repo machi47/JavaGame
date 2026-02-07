@@ -483,14 +483,29 @@ public class ChunkManager {
     /**
      * Submit a full mesh building job to the background mesh pool.
      * Uses meshAllRaw (CPU-only, no GL calls) on background threads.
+     * When FIX_B3_SNAPSHOT_MESH is enabled, creates a snapshot upfront to eliminate map lookups.
      */
     private void submitMeshJob(Chunk chunk, ChunkPos pos, boolean rebuildNeighbors) {
         if (meshingInProgress.contains(pos)) return;
         meshingInProgress.add(pos);
 
+        // FIX_B3: Create snapshot on main thread (few map lookups), then mesh with zero lookups
+        final com.voxelgame.world.WorldAccess meshWorld;
+        if (com.voxelgame.bench.BenchFixes.FIX_B3_SNAPSHOT_MESH) {
+            // Resolve neighbors once (O(4) map lookups)
+            Chunk nx = world.getChunk(pos.x() - 1, pos.z());
+            Chunk px = world.getChunk(pos.x() + 1, pos.z());
+            Chunk nz = world.getChunk(pos.x(), pos.z() - 1);
+            Chunk pz = world.getChunk(pos.x(), pos.z() + 1);
+            var snapshot = new com.voxelgame.world.mesh.NeighborhoodSnapshot(chunk, nx, px, nz, pz);
+            meshWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(snapshot);
+        } else {
+            meshWorld = world;
+        }
+
         meshPool.submit(() -> {
             try {
-                RawMeshResult raw = mesher.meshAllRaw(chunk, world);
+                RawMeshResult raw = mesher.meshAllRaw(chunk, meshWorld);
                 uploadQueue.add(new MeshUpload(chunk, pos, raw));
             } catch (Exception e) {
                 System.err.println("Mesh building failed for " + pos + ": " + e.getMessage());
@@ -509,9 +524,23 @@ public class ChunkManager {
                     neighbor.getCurrentLOD() == LODLevel.LOD_0 &&
                     !meshingInProgress.contains(nPos)) {
                     meshingInProgress.add(nPos);
+                    
+                    // FIX_B3: Create snapshot for neighbor mesh too
+                    final com.voxelgame.world.WorldAccess nMeshWorld;
+                    if (com.voxelgame.bench.BenchFixes.FIX_B3_SNAPSHOT_MESH) {
+                        Chunk nnx = world.getChunk(nPos.x() - 1, nPos.z());
+                        Chunk npx = world.getChunk(nPos.x() + 1, nPos.z());
+                        Chunk nnz = world.getChunk(nPos.x(), nPos.z() - 1);
+                        Chunk npz = world.getChunk(nPos.x(), nPos.z() + 1);
+                        var nSnap = new com.voxelgame.world.mesh.NeighborhoodSnapshot(neighbor, nnx, npx, nnz, npz);
+                        nMeshWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(nSnap);
+                    } else {
+                        nMeshWorld = world;
+                    }
+                    
                     meshPool.submit(() -> {
                         try {
-                            RawMeshResult raw = mesher.meshAllRaw(neighbor, world);
+                            RawMeshResult raw = mesher.meshAllRaw(neighbor, nMeshWorld);
                             uploadQueue.add(new MeshUpload(neighbor, nPos, raw));
                         } catch (Exception e) {
                             // Neighbor mesh rebuild failure is non-critical

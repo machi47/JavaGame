@@ -1,0 +1,14 @@
+{
+  "frame_ms_p50": 34.055,
+  "frame_ms_p95": 38.894,
+  "frame_ms_p99": 65.107,
+  "fps_avg": 29.47,
+  "fps_min": 0.00,
+  "fps_max": 57.00,
+  "total_gc_pause_ms": 1325,
+  "max_loaded_chunks": 1382,
+  "max_pending_mesh_jobs": 139,
+  "max_pending_io_jobs": 10,
+  "total_bytes_written": 0,
+  "total_chunks_saved": 0
+}

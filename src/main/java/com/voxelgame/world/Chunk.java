@@ -248,6 +248,9 @@ public class Chunk {
     public boolean isLightDirty() { return lightDirty; }
     public void setLightDirty(boolean d) { this.lightDirty = d; }
     public ChunkPos getPos() { return pos; }
+    
+    /** Direct access to block array for zero-overhead reads in meshing snapshot. */
+    public byte[] getBlocksArray() { return blocks; }
 
     // --- Modified flag for save system ---
 

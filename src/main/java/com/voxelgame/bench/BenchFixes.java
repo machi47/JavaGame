@@ -15,6 +15,9 @@ public class BenchFixes {
     // Fix B2: Use fastutil Long2ObjectOpenHashMap with RW lock (no boxing at all)
     public static boolean FIX_B2_PRIMITIVE_MAP = false;
     
+    // Fix B3: Snapshot-based meshing (resolve neighbors once, then pure array access)
+    public static boolean FIX_B3_SNAPSHOT_MESH = false;
+    
     // Fix C: Async region IO instead of sync writes on main thread
     public static boolean FIX_ASYNC_REGION_IO = false;
     
@@ -32,13 +35,14 @@ public class BenchFixes {
             case "FIX_MESH_PRIMITIVE_BUFFERS" -> FIX_MESH_PRIMITIVE_BUFFERS = value;
             case "FIX_CHUNKPOS_NO_ALLOC" -> FIX_CHUNKPOS_NO_ALLOC = value;
             case "FIX_B2_PRIMITIVE_MAP" -> FIX_B2_PRIMITIVE_MAP = value;
+            case "FIX_B3_SNAPSHOT_MESH" -> FIX_B3_SNAPSHOT_MESH = value;
             case "FIX_ASYNC_REGION_IO" -> FIX_ASYNC_REGION_IO = value;
         }
     }
     
     public static String status() {
         return String.format(
-            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_CHUNKPOS_NO_ALLOC=%s, FIX_B2_PRIMITIVE_MAP=%s, FIX_ASYNC_REGION_IO=%s",
-            FIX_MESH_PRIMITIVE_BUFFERS, FIX_CHUNKPOS_NO_ALLOC, FIX_B2_PRIMITIVE_MAP, FIX_ASYNC_REGION_IO);
+            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_B3_SNAPSHOT_MESH=%s, FIX_ASYNC_REGION_IO=%s",
+            FIX_MESH_PRIMITIVE_BUFFERS, FIX_B3_SNAPSHOT_MESH, FIX_ASYNC_REGION_IO);
     }
 }

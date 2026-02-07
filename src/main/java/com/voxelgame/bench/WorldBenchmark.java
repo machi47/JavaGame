@@ -195,8 +195,7 @@ public class WorldBenchmark {
             pw.println("  \"seed\": " + seed + ",");
             pw.println("  \"bench_fixes\": {");
             pw.println("    \"FIX_MESH_PRIMITIVE_BUFFERS\": " + BenchFixes.FIX_MESH_PRIMITIVE_BUFFERS + ",");
-            pw.println("    \"FIX_CHUNKPOS_NO_ALLOC\": " + BenchFixes.FIX_CHUNKPOS_NO_ALLOC + ",");
-            pw.println("    \"FIX_B2_PRIMITIVE_MAP\": " + BenchFixes.FIX_B2_PRIMITIVE_MAP + ",");
+            pw.println("    \"FIX_B3_SNAPSHOT_MESH\": " + BenchFixes.FIX_B3_SNAPSHOT_MESH + ",");
             pw.println("    \"FIX_ASYNC_REGION_IO\": " + BenchFixes.FIX_ASYNC_REGION_IO);
             pw.println("  },");
             pw.println("  \"camera_path\": {");
