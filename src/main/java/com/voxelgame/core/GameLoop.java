@@ -218,6 +218,11 @@ public class GameLoop {
     private String perfSnapshotOutDir = null;
     private String perfSnapshotScenario = "HIGH_ALT";
     private PerfSnapshot perfSnapshotRunner = null;
+    
+    // Repro capture mode (deterministic scenario with screenshots)
+    private boolean repro = false;
+    private String reproOutDir = null;
+    private ReproCapture reproRunner = null;
 
     // Track which world is currently loaded
     private String currentWorldFolder = null;
@@ -300,6 +305,12 @@ public class GameLoop {
         this.perfSnapshotSeconds = seconds;
         this.perfSnapshotOutDir = outDir;
         this.perfSnapshotScenario = scenario != null ? scenario : "HIGH_ALT";
+    }
+    
+    /** Enable repro capture mode (deterministic scenario with screenshots). */
+    public void setRepro(boolean enabled, String outDir) {
+        this.repro = enabled;
+        this.reproOutDir = outDir;
     }
 
     // Track create-new-world mode (--create flag)
@@ -766,6 +777,14 @@ public class GameLoop {
             perfSnapshotRunner.setReferences(player, worldTime, renderer, chunkManager, window);
             perfSnapshotRunner.start();
         }
+        
+        // Initialize repro capture if enabled
+        if (repro) {
+            String outDir = reproOutDir != null ? reproOutDir : "artifacts/repro/HIGH_ALT_FAST_FLIGHT_V2";
+            reproRunner = new ReproCapture(outDir);
+            reproRunner.setReferences(player, worldTime, renderer, chunkManager, window);
+            reproRunner.start();
+        }
 
         // Switch to in-game state
         screenState = ScreenState.IN_GAME;
@@ -892,9 +911,12 @@ public class GameLoop {
     private void loop() {
         while (!window.shouldClose() &&
                (automationController == null || !automationController.isQuitRequested())) {
-            // Perf snapshot: mark frame begin (wall-clock timing starts here)
+            // Perf snapshot / repro: mark frame begin (wall-clock timing starts here)
             if (perfSnapshot && perfSnapshotRunner != null) {
                 perfSnapshotRunner.beginFrame();
+            }
+            if (repro && reproRunner != null) {
+                reproRunner.beginFrame();
             }
             
             time.update();
@@ -927,14 +949,21 @@ public class GameLoop {
 
             Input.endFrame();
             
-            // Perf snapshot: measure swap time (this is where vsync/GPU blocking happens)
+            // Perf snapshot / repro: measure swap time (this is where vsync/GPU blocking happens)
             if (perfSnapshot && perfSnapshotRunner != null) {
                 perfSnapshotRunner.beginSwap();
+            }
+            if (repro && reproRunner != null) {
+                reproRunner.beginSwap();
             }
             window.swapBuffers();
             if (perfSnapshot && perfSnapshotRunner != null) {
                 perfSnapshotRunner.endSwap();
                 perfSnapshotRunner.endFrame(dt);
+            }
+            if (repro && reproRunner != null) {
+                reproRunner.endSwap();
+                reproRunner.endFrame(dt);
             }
         }
     }
@@ -1334,9 +1363,12 @@ public class GameLoop {
             performAutoSave();
         }
 
-        // Perf snapshot: end CPU update phase, begin render
+        // Perf snapshot / repro: end CPU update phase, begin render
         if (perfSnapshot && perfSnapshotRunner != null) {
             perfSnapshotRunner.endCpuUpdate();
+        }
+        if (repro && reproRunner != null) {
+            reproRunner.endCpuUpdate();
         }
         
         // Render
@@ -1344,9 +1376,12 @@ public class GameLoop {
         renderGameWorld(w, h, dt);
         profiler.end("Render");
         
-        // Perf snapshot: end CPU render submission
+        // Perf snapshot / repro: end CPU render submission
         if (perfSnapshot && perfSnapshotRunner != null) {
             perfSnapshotRunner.endCpuRender();
+        }
+        if (repro && reproRunner != null) {
+            reproRunner.endCpuRender();
         }
 
         // Screenshot (F2) — use framebuffer dimensions for glReadPixels
@@ -1406,6 +1441,12 @@ public class GameLoop {
         // Perf snapshot mode: check completion (timing hooks are called in loop())
         if (perfSnapshot && perfSnapshotRunner != null && perfSnapshotRunner.isComplete()) {
             System.out.println("[PerfSnapshot] Complete. Exiting.");
+            window.requestClose();
+        }
+        
+        // Repro capture mode: check completion
+        if (repro && reproRunner != null && reproRunner.isComplete()) {
+            System.out.println("[ReproCapture] Complete. Exiting.");
             window.requestClose();
         }
         

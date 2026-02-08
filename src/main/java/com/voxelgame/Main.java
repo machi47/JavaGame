@@ -38,6 +38,9 @@ public class Main {
         int perfSnapshotSeconds = 10;
         String perfSnapshotOutDir = null;
         String perfSnapshotScenario = "HIGH_ALT"; // or "GROUND"
+        // Repro capture: deterministic scenario with screenshots
+        boolean reproMode = false;
+        String reproOutDir = null;
         String directWorldName = null;
         String scriptPath = null;
         String captureOutputDir = null;
@@ -132,6 +135,14 @@ public class Main {
                         perfSnapshotScenario = args[++i].toUpperCase();
                     }
                 }
+                case "--repro" -> {
+                    reproMode = true;
+                    directMode = true;
+                    // Optional output directory
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        reproOutDir = args[++i];
+                    }
+                }
                 case "--create" -> {
                     createMode = true;
                     directMode = true;
@@ -189,7 +200,7 @@ public class Main {
         }
 
         // Automation and agent-server modes imply direct mode
-        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode || lightingTestMode || perfCaptureMode || perfSnapshotMode) {
+        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode || lightingTestMode || perfCaptureMode || perfSnapshotMode || reproMode) {
             directMode = true;
         }
 
@@ -240,13 +251,18 @@ public class Main {
         if (perfSnapshotMode) {
             loop.setPerfSnapshot(true, perfSnapshotSeconds, perfSnapshotOutDir, perfSnapshotScenario);
         }
+        
+        // Set repro capture mode if requested
+        if (reproMode) {
+            loop.setRepro(true, reproOutDir);
+        }
 
         // Direct/create mode skips the menu
         // Capture modes create a new world with fixed seed
-        if (captureDebugViews || captureSpawnValidation) {
+        if (captureDebugViews || captureSpawnValidation || reproMode) {
             // Use fixed seed for reproducibility (default: 42)
             String seedStr = captureSeed != null ? captureSeed : "42";
-            String worldName = "capture-" + seedStr;
+            String worldName = reproMode ? "repro-" + seedStr : "capture-" + seedStr;
             loop.setCaptureSeed(seedStr);
             loop.setCreateNewWorld(worldName);
         } else if (createMode) {

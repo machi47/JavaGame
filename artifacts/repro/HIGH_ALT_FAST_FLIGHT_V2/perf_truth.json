@@ -1,0 +1,61 @@
+{
+  "metadata": {
+    "git_hash": "ba1f42a",
+    "scenario": "HIGH_ALT_FAST_FLIGHT_V2",
+    "duration_seconds": 30,
+    "sample_count": 657,
+    "seed": 42,
+    "flight_speed": 50.0,
+    "altitude": 200.0,
+    "capture_timestamp": "2026-02-08T17:04:02.172047Z"
+  },
+
+  "environment": {
+    "vsync_enabled": true,
+    "window_mode": "windowed",
+    "resolution": "1920x858",
+    "shadows_enabled": true,
+    "gpu_timing_available": true
+  },
+
+  "frame_wall_ms": {
+    "avg": 46.064,
+    "p50": 41.509,
+    "p95": 94.308,
+    "p99": 123.419,
+    "max": 188.146
+  },
+
+  "fps_avg": 21.71,
+  "fps_1pct_low": 8.10,
+
+  "swap_ms": {
+    "avg": 1.212,
+    "p50": 0.355,
+    "p95": 0.714,
+    "p99": 30.436,
+    "max": 144.535
+  },
+
+  "gpu_ms": {
+    "avg": 0.000,
+    "p50": 0.000,
+    "p95": 0.000,
+    "p99": 0.000,
+    "max": 0.000
+  },
+
+  "cpu_ms": {
+    "update_avg": 8.651,
+    "render_avg": 6.982,
+    "total_avg": 15.633
+  },
+
+  "unaccounted_ms": 29.219,
+  "gc_total_ms": 1171.000,
+
+  "verdict": {
+    "bottleneck": "GPU (unaccounted time: 29.2ms)",
+    "frame_breakdown": "cpu=15.6ms + swap=1.2ms + unaccounted=29.2ms = 46.1ms"
+  }
+}
