@@ -452,6 +452,9 @@ public class Renderer {
     
     /** Get shadow renderer for debug visualization. */
     public ShadowRenderer getShadowRenderer() { return shadowRenderer; }
+    
+    /** Get sky system for lighting probes. */
+    public SkySystem getSkySystem() { return skySystem; }
 
     /**
      * Phase 5: Render shadow pass for all cascades.

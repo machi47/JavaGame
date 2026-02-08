@@ -200,6 +200,11 @@ public class GameLoop {
     private long benchSeed = 42L;
     private String benchOutDir = null;
     private com.voxelgame.bench.WorldBenchmark worldBenchmark = null;
+    
+    // Lighting test mode
+    private boolean lightingTest = false;
+    private String lightingTestOutDir = null;
+    private LightingTest lightingTestRunner = null;
 
     // Track which world is currently loaded
     private String currentWorldFolder = null;
@@ -261,6 +266,12 @@ public class GameLoop {
         this.benchWorldPhase = phase != null ? phase : "BEFORE";
         this.benchSeed = seed != null ? Long.parseLong(seed) : 42L;
         this.benchOutDir = outDir;
+    }
+    
+    /** Enable lighting test mode with optional output directory. */
+    public void setLightingTest(boolean enabled, String outDir) {
+        this.lightingTest = enabled;
+        this.lightingTestOutDir = outDir;
     }
 
     // Track create-new-world mode (--create flag)
@@ -700,6 +711,14 @@ public class GameLoop {
             // Enable flight for benchmark
             player.setGameMode(GameMode.CREATIVE);
             if (!player.isFlyMode()) player.toggleFlyMode();
+        }
+        
+        // Initialize lighting test if enabled
+        if (lightingTest) {
+            String outDir = lightingTestOutDir != null ? lightingTestOutDir : "artifacts/lighting_test";
+            lightingTestRunner = new LightingTest(outDir);
+            lightingTestRunner.setReferences(player, worldTime, renderer, postFX, chunkManager, world, 
+                renderer.getSkySystem(), window.getFramebufferWidth(), window.getFramebufferHeight());
         }
 
         // Switch to in-game state
@@ -1287,6 +1306,15 @@ public class GameLoop {
             if (worldBenchmark.isComplete()) {
                 worldBenchmark.finish();
                 System.out.println("[Benchmark] Complete. Exiting.");
+                window.requestClose();
+            }
+        }
+        
+        // Lighting test mode
+        if (lightingTest && lightingTestRunner != null) {
+            lightingTestRunner.update(dt);
+            if (lightingTestRunner.isComplete()) {
+                System.out.println("[LightingTest] Complete. Exiting.");
                 window.requestClose();
             }
         }

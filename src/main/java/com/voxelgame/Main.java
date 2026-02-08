@@ -28,6 +28,8 @@ public class Main {
         String benchWorldPhase = "BEFORE";
         String benchSeed = null;
         String benchOutDir = null;
+        boolean lightingTestMode = false;
+        String lightingTestOutDir = null;
         String directWorldName = null;
         String scriptPath = null;
         String captureOutputDir = null;
@@ -80,6 +82,13 @@ public class Main {
                         com.voxelgame.bench.BenchFixes.parse(args[++i]);
                     }
                 }
+                case "--lighting-test" -> {
+                    lightingTestMode = true;
+                    directMode = true;
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        lightingTestOutDir = args[++i];
+                    }
+                }
                 case "--create" -> {
                     createMode = true;
                     directMode = true;
@@ -121,6 +130,7 @@ public class Main {
                     System.out.println("  --profile <name>       Capture profile: BEFORE, AFTER_FOG, AFTER_EXPOSURE");
                     System.out.println("                         (captures all profiles if not specified)");
                     System.out.println("  --bench-world          Run world streaming benchmark (60s flight test)");
+                    System.out.println("  --lighting-test [dir]  Run lighting test (captures at NOON/SUNSET/MIDNIGHT)");
                     System.out.println("  --help, -h             Show this help message");
                     System.exit(0);
                 }
@@ -134,7 +144,7 @@ public class Main {
         }
 
         // Automation and agent-server modes imply direct mode
-        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode) {
+        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode || lightingTestMode) {
             directMode = true;
         }
 
@@ -169,6 +179,11 @@ public class Main {
         // Set benchmark mode if requested
         if (benchWorldMode) {
             loop.setBenchWorld(true, benchWorldPhase, benchSeed, benchOutDir);
+        }
+        
+        // Set lighting test mode if requested
+        if (lightingTestMode) {
+            loop.setLightingTest(true, lightingTestOutDir);
         }
 
         // Direct/create mode skips the menu
