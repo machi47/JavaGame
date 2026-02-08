@@ -54,9 +54,10 @@ public class SaveManager {
         this.saveDir = Paths.get(home, ".voxelgame", "saves", worldName);
         this.regionDir = saveDir.resolve("region");
         
-        // Initialize async writer if enabled
-        if (BenchFixes.FIX_ASYNC_REGION_IO) {
-            this.asyncWriter = new AsyncRegionWriter(regionDir);
+        // Initialize async writer if enabled (V2 mode if FIX_ASYNC_REGION_IO_V2)
+        if (BenchFixes.FIX_ASYNC_REGION_IO || BenchFixes.FIX_ASYNC_REGION_IO_V2) {
+            boolean v2Mode = BenchFixes.FIX_ASYNC_REGION_IO_V2;
+            this.asyncWriter = new AsyncRegionWriter(regionDir, v2Mode);
         }
     }
 
@@ -269,6 +270,33 @@ public class SaveManager {
     /** Check if async IO is currently enabled. */
     public boolean isAsyncIoEnabled() {
         return asyncWriter != null;
+    }
+    
+    // ---- V2 stats ----
+    
+    /** Total number of IO jobs enqueued (new keys). */
+    public long getIoJobsEnqueued() {
+        return asyncWriter != null ? asyncWriter.getIoJobsEnqueued() : 0;
+    }
+    
+    /** Total number of IO jobs merged (same key updated). */
+    public long getIoJobsMerged() {
+        return asyncWriter != null ? asyncWriter.getIoJobsMerged() : 0;
+    }
+    
+    /** Total number of IO jobs dropped (V2 throttle mode). */
+    public long getIoJobsDropped() {
+        return asyncWriter != null ? asyncWriter.getIoJobsDropped() : 0;
+    }
+    
+    /** Maximum queue size observed. */
+    public long getIoQueueHighWater() {
+        return asyncWriter != null ? asyncWriter.getIoQueueHighWater() : 0;
+    }
+    
+    /** Total time spent in backpressure/throttle mode, in milliseconds. */
+    public long getBackpressureMs() {
+        return asyncWriter != null ? asyncWriter.getBackpressureMs() : 0;
     }
 
     // ---- Static utilities for world management ----

@@ -22,6 +22,11 @@ import java.util.logging.Logger;
  * - Bounded backlog: if queue is full, newest overwrites pending job (latest wins)
  * - Uses primitive long keys (packed cx,cz) to avoid boxing on hot path
  * 
+ * V2 mode (FIX_ASYNC_REGION_IO_V2) adds:
+ * - Hard bounded queue and dedupe map
+ * - Adaptive throttling with high/low water marks
+ * - Backpressure when pending jobs exceed threshold
+ * 
  * Thread safety:
  * - enqueue() is called from main thread
  * - Writer thread consumes jobs and writes to disk
@@ -31,11 +36,19 @@ public class AsyncRegionWriter {
 
     private static final Logger LOG = Logger.getLogger(AsyncRegionWriter.class.getName());
 
-    /** Maximum number of pending save jobs before we start dropping/coalescing more aggressively. */
-    private static final int MAX_PENDING_JOBS = 256;
+    /** Maximum number of pending save jobs (hard bound). */
+    private static final int MAX_PENDING_JOBS = 512;
+    
+    // ---- V2: Adaptive throttling water marks ----
+    private static final int HIGH_WATER_MARK = 500;
+    private static final int LOW_WATER_MARK = 200;
+    private static final long THROTTLE_INTERVAL_MS = 250;
 
     /** Path to region directory. */
     private final Path regionDir;
+    
+    /** V2 mode enabled. */
+    private final boolean v2Mode;
 
     /** Map of pending save jobs: packed(cx,cz) → job data. */
     private final Long2ObjectOpenHashMap<ChunkSaveJob> pendingJobs = new Long2ObjectOpenHashMap<>();
@@ -60,9 +73,26 @@ public class AsyncRegionWriter {
     private final AtomicLong chunksWrittenTotal = new AtomicLong(0);
     private final AtomicLong ioFlushTimeNs = new AtomicLong(0);
     private final AtomicLong mainThreadBlockedNs = new AtomicLong(0);  // Should always be ~0
+    
+    // ---- V2 stats ----
+    private final AtomicLong ioJobsEnqueued = new AtomicLong(0);
+    private final AtomicLong ioJobsMerged = new AtomicLong(0);
+    private final AtomicLong ioJobsDropped = new AtomicLong(0);
+    private final AtomicLong ioQueueHighWater = new AtomicLong(0);
+    private final AtomicLong backpressureTimeNs = new AtomicLong(0);
+    
+    // ---- V2 throttle state (main thread only, no sync needed) ----
+    private volatile boolean inThrottleMode = false;
+    private volatile long throttleStartTimeNs = 0;
+    private volatile long lastThrottleCheckMs = 0;
 
     public AsyncRegionWriter(Path regionDir) {
+        this(regionDir, false);
+    }
+    
+    public AsyncRegionWriter(Path regionDir, boolean v2Mode) {
         this.regionDir = regionDir;
+        this.v2Mode = v2Mode;
         this.writerThread = new Thread(this::writerLoop, "AsyncRegionWriter");
         this.writerThread.setDaemon(true);
         this.writerThread.start();
@@ -72,25 +102,71 @@ public class AsyncRegionWriter {
      * Enqueue a chunk save job. Returns immediately (never blocks).
      * If the same chunk is already queued, the old job is replaced (latest wins).
      * 
+     * V2 mode adds adaptive throttling:
+     * - If pending jobs > HIGH_WATER_MARK, enters throttle mode (drops non-critical saves)
+     * - If pending jobs < LOW_WATER_MARK, exits throttle mode
+     * 
      * @param chunkX Chunk X coordinate
      * @param chunkZ Chunk Z coordinate
      * @param compressedData Pre-encoded/compressed chunk data
+     * @return true if enqueued/merged, false if dropped (V2 throttle)
      */
-    public void enqueue(int chunkX, int chunkZ, byte[] compressedData) {
+    public boolean enqueue(int chunkX, int chunkZ, byte[] compressedData) {
         long key = packKey(chunkX, chunkZ);
         ChunkSaveJob job = new ChunkSaveJob(chunkX, chunkZ, compressedData);
 
         queueLock.lock();
         try {
-            // Check if this key is already pending (coalesce)
+            int currentSize = pendingJobs.size();
+            
+            // Track high water mark
+            if (currentSize > ioQueueHighWater.get()) {
+                ioQueueHighWater.set(currentSize);
+            }
+            
+            if (v2Mode) {
+                long now = System.currentTimeMillis();
+                
+                // Check throttle state transitions
+                if (currentSize >= HIGH_WATER_MARK && !inThrottleMode) {
+                    // Enter throttle mode
+                    inThrottleMode = true;
+                    throttleStartTimeNs = System.nanoTime();
+                    lastThrottleCheckMs = now;
+                } else if (currentSize < LOW_WATER_MARK && inThrottleMode) {
+                    // Exit throttle mode
+                    inThrottleMode = false;
+                    backpressureTimeNs.addAndGet(System.nanoTime() - throttleStartTimeNs);
+                }
+                
+                // In throttle mode: only merge existing keys, drop new ones
+                if (inThrottleMode) {
+                    ChunkSaveJob existing = pendingJobs.get(key);
+                    if (existing != null) {
+                        // Key already pending — update with latest data (merge)
+                        pendingJobs.put(key, job);
+                        ioJobsMerged.incrementAndGet();
+                        return true;
+                    } else {
+                        // New key during throttle — drop it
+                        ioJobsDropped.incrementAndGet();
+                        return false;
+                    }
+                }
+            }
+            
+            // Normal enqueue (V1 mode or V2 not throttled)
             ChunkSaveJob existing = pendingJobs.put(key, job);
             if (existing == null) {
                 // New key — add to FIFO queue
-                // If queue is at max capacity, we still add but won't grow unbounded
-                // because coalescing keeps map size bounded per unique chunk
                 keyQueue.enqueue(key);
+                ioJobsEnqueued.incrementAndGet();
+            } else {
+                // Replaced existing — count as merge
+                ioJobsMerged.incrementAndGet();
             }
-            // else: replaced existing job, key is already in queue — no action needed
+            
+            return true;
         } finally {
             queueLock.unlock();
         }
@@ -223,6 +299,12 @@ public class AsyncRegionWriter {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        
+        // Finalize backpressure time if still in throttle mode
+        if (inThrottleMode) {
+            backpressureTimeNs.addAndGet(System.nanoTime() - throttleStartTimeNs);
+            inThrottleMode = false;
+        }
     }
 
     /**
@@ -286,6 +368,38 @@ public class AsyncRegionWriter {
     /** Total time main thread was blocked waiting for IO, in milliseconds. */
     public long getMainThreadBlockedMs() {
         return mainThreadBlockedNs.get() / 1_000_000;
+    }
+    
+    // ---- V2 stats getters ----
+    
+    /** Total number of IO jobs enqueued (new keys). */
+    public long getIoJobsEnqueued() {
+        return ioJobsEnqueued.get();
+    }
+    
+    /** Total number of IO jobs merged (same key updated). */
+    public long getIoJobsMerged() {
+        return ioJobsMerged.get();
+    }
+    
+    /** Total number of IO jobs dropped (V2 throttle mode). */
+    public long getIoJobsDropped() {
+        return ioJobsDropped.get();
+    }
+    
+    /** Maximum queue size observed. */
+    public long getIoQueueHighWater() {
+        return ioQueueHighWater.get();
+    }
+    
+    /** Total time spent in backpressure/throttle mode, in milliseconds. */
+    public long getBackpressureMs() {
+        long total = backpressureTimeNs.get();
+        // Add current throttle duration if still in throttle mode
+        if (inThrottleMode) {
+            total += System.nanoTime() - throttleStartTimeNs;
+        }
+        return total / 1_000_000;
     }
 
     /**

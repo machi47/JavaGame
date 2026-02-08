@@ -1,0 +1,6 @@
+[2026-02-08T14:49:25.063904Z] [Benchmark] Started
+[2026-02-08T14:49:25.066468Z] [Benchmark] Profile: FIX_C1_BEFORE
+[2026-02-08T14:49:25.068250Z] [Benchmark] Seed: 42
+[2026-02-08T14:49:25.068339Z] [Benchmark] Duration: 60s
+[2026-02-08T14:49:25.068434Z] [Benchmark] Output: artifacts/world_bench/FIX_C1_BEFORE
+[2026-02-08T14:50:25.574025Z] [Benchmark] Complete. Writing results...

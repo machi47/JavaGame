@@ -80,6 +80,12 @@ public class WorldBenchmark {
         long bytesWrittenTotal;
         long chunksWrittenTotal;
         long ioFlushMs;
+        // V2 stats
+        long ioQueueHighWater;
+        long ioJobsDropped;
+        long ioJobsMerged;
+        long ioJobsEnqueued;
+        long ioBackpressureMs;
     }
     
     public WorldBenchmark(ChunkManager chunkManager, World world, Player player, 
@@ -190,6 +196,13 @@ public class WorldBenchmark {
         s.chunksWrittenTotal = chunkManager.getChunksSavedTotal();
         s.ioFlushMs = chunkManager.getIoFlushMs();
         
+        // V2 IO stats
+        s.ioQueueHighWater = chunkManager.getIoQueueHighWater();
+        s.ioJobsDropped = chunkManager.getIoJobsDropped();
+        s.ioJobsMerged = chunkManager.getIoJobsMerged();
+        s.ioJobsEnqueued = chunkManager.getIoJobsEnqueued();
+        s.ioBackpressureMs = chunkManager.getBackpressureMs();
+        
         samples.add(s);
     }
     
@@ -205,7 +218,8 @@ public class WorldBenchmark {
             pw.println("    \"FIX_MESH_PRIMITIVE_BUFFERS\": " + BenchFixes.FIX_MESH_PRIMITIVE_BUFFERS + ",");
             pw.println("    \"FIX_B3_SNAPSHOT_MESH\": " + BenchFixes.FIX_B3_SNAPSHOT_MESH + ",");
             pw.println("    \"FIX_B31_SNAPSHOT_OFFTHREAD\": " + BenchFixes.FIX_B31_SNAPSHOT_OFFTHREAD + ",");
-            pw.println("    \"FIX_ASYNC_REGION_IO\": " + BenchFixes.FIX_ASYNC_REGION_IO);
+            pw.println("    \"FIX_ASYNC_REGION_IO\": " + BenchFixes.FIX_ASYNC_REGION_IO + ",");
+            pw.println("    \"FIX_ASYNC_REGION_IO_V2\": " + BenchFixes.FIX_ASYNC_REGION_IO_V2);
             pw.println("  },");
             pw.println("  \"camera_path\": {");
             pw.println("    \"type\": \"spiral\",");
@@ -233,12 +247,13 @@ public class WorldBenchmark {
     
     private void writeSamples() throws IOException {
         try (PrintWriter pw = new PrintWriter(new FileWriter(new File(outputDir, "bench_samples.csv")))) {
-            pw.println("timestamp_ms,fps,frame_ms,gc_pause_ms,heap_used_mb,loaded_chunks,meshed_chunks,pending_mesh_jobs,pending_io_jobs,mesh_quads,main_thread_blocked_ms,bytes_written_total,chunks_saved_total,io_flush_ms");
+            pw.println("timestamp_ms,fps,frame_ms,gc_pause_ms,heap_used_mb,loaded_chunks,meshed_chunks,pending_mesh_jobs,pending_io_jobs,mesh_quads,main_thread_blocked_ms,bytes_written_total,chunks_saved_total,io_flush_ms,io_queue_high_water,io_jobs_dropped,io_jobs_merged,io_jobs_enqueued,io_backpressure_ms");
             for (Sample s : samples) {
-                pw.printf("%d,%.2f,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d%n",
+                pw.printf("%d,%.2f,%.3f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d%n",
                     s.timestampMs, s.fps, s.frameMs, s.gcPauseMs, s.heapUsedMb,
                     s.loadedChunks, s.meshedChunks, s.pendingMeshJobs, s.pendingIoJobs,
-                    s.meshQuads, s.mainThreadBlockedMs, s.bytesWrittenTotal, s.chunksWrittenTotal, s.ioFlushMs);
+                    s.meshQuads, s.mainThreadBlockedMs, s.bytesWrittenTotal, s.chunksWrittenTotal, s.ioFlushMs,
+                    s.ioQueueHighWater, s.ioJobsDropped, s.ioJobsMerged, s.ioJobsEnqueued, s.ioBackpressureMs);
             }
         }
     }
@@ -272,6 +287,9 @@ public class WorldBenchmark {
         int maxLoadedChunks = 0, maxPendingMesh = 0, maxPendingIo = 0;
         long totalMainThreadBlocked = 0;
         long finalBytesWritten = 0, finalChunksSaved = 0, finalIoFlushMs = 0;
+        // V2 stats (use final values from last sample)
+        long finalIoQueueHighWater = 0, finalIoJobsDropped = 0, finalIoJobsMerged = 0;
+        long finalIoJobsEnqueued = 0, finalIoBackpressureMs = 0;
         for (Sample s : samples) {
             if (s.loadedChunks > maxLoadedChunks) maxLoadedChunks = s.loadedChunks;
             if (s.pendingMeshJobs > maxPendingMesh) maxPendingMesh = s.pendingMeshJobs;
@@ -280,6 +298,12 @@ public class WorldBenchmark {
             finalBytesWritten = s.bytesWrittenTotal;
             finalChunksSaved = s.chunksWrittenTotal;
             finalIoFlushMs = s.ioFlushMs;
+            // V2 stats
+            finalIoQueueHighWater = s.ioQueueHighWater;
+            finalIoJobsDropped = s.ioJobsDropped;
+            finalIoJobsMerged = s.ioJobsMerged;
+            finalIoJobsEnqueued = s.ioJobsEnqueued;
+            finalIoBackpressureMs = s.ioBackpressureMs;
         }
         
         try (PrintWriter pw = new PrintWriter(new FileWriter(new File(outputDir, "bench_summary.json")))) {
@@ -298,7 +322,13 @@ public class WorldBenchmark {
             pw.printf("  \"bytes_written_total\": %d,%n", finalBytesWritten);
             pw.printf("  \"chunks_saved_total\": %d,%n", finalChunksSaved);
             pw.printf("  \"io_flush_ms\": %d,%n", finalIoFlushMs);
-            pw.printf("  \"main_thread_blocked_ms\": %d%n", totalMainThreadBlocked);
+            pw.printf("  \"main_thread_blocked_ms\": %d,%n", totalMainThreadBlocked);
+            // V2 stats
+            pw.printf("  \"io_queue_high_water\": %d,%n", finalIoQueueHighWater);
+            pw.printf("  \"io_jobs_dropped\": %d,%n", finalIoJobsDropped);
+            pw.printf("  \"io_jobs_merged\": %d,%n", finalIoJobsMerged);
+            pw.printf("  \"io_jobs_enqueued\": %d,%n", finalIoJobsEnqueued);
+            pw.printf("  \"io_backpressure_ms\": %d%n", finalIoBackpressureMs);
             pw.println("}");
         }
     }

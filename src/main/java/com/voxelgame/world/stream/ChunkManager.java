@@ -906,6 +906,33 @@ public class ChunkManager {
     public long getMainThreadBlockedMs() {
         return saveManager != null ? saveManager.getMainThreadBlockedMs() : 0;
     }
+    
+    // ---- V2 IO stats ----
+    
+    /** Total number of IO jobs enqueued (new keys). */
+    public long getIoJobsEnqueued() {
+        return saveManager != null ? saveManager.getIoJobsEnqueued() : 0;
+    }
+    
+    /** Total number of IO jobs merged (same key updated). */
+    public long getIoJobsMerged() {
+        return saveManager != null ? saveManager.getIoJobsMerged() : 0;
+    }
+    
+    /** Total number of IO jobs dropped (V2 throttle mode). */
+    public long getIoJobsDropped() {
+        return saveManager != null ? saveManager.getIoJobsDropped() : 0;
+    }
+    
+    /** Maximum queue size observed. */
+    public long getIoQueueHighWater() {
+        return saveManager != null ? saveManager.getIoQueueHighWater() : 0;
+    }
+    
+    /** Total time spent in backpressure/throttle mode, in milliseconds. */
+    public long getBackpressureMs() {
+        return saveManager != null ? saveManager.getBackpressureMs() : 0;
+    }
 
     public void shutdown() {
         if (genPool != null) {

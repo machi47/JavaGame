@@ -1,0 +1,62 @@
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes UP-TO-DATE
+
+> Task :run
+VoxelGame starting...
+TextureAtlas loaded from terrain.png: 128x256 (128 tiles)
+ShadowRenderer initialized: 3 cascades @ 2048x2048
+[2026-02-08T14:49:25.063904Z] [Benchmark] Started
+[2026-02-08T14:49:25.066468Z] [Benchmark] Profile: FIX_C1_BEFORE
+[2026-02-08T14:49:25.068250Z] [Benchmark] Seed: 42
+[2026-02-08T14:49:25.068339Z] [Benchmark] Duration: 60s
+[2026-02-08T14:49:25.068434Z] [Benchmark] Output: artifacts/world_bench/FIX_C1_BEFORE
+[GameMode] SURVIVAL -> CREATIVE (invuln=true, flight=true)
+Game started — world: default
+VoxelGame initialized — direct world: default
+Mesh building failed for ChunkPos[x=-1, z=0]: Index -16 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=-1, z=-1]: Index -1 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=0, z=-1]: Index -1 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=1, z=1]: Index -1 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=1, z=-1]: Index -1 out of bounds for length 32768
+Mesh building failed for ChunkPos[x=-2, z=-2]: null
+Mesh building failed for ChunkPos[x=-1, z=-2]: null
+Mesh building failed for ChunkPos[x=0, z=-2]: null
+Mesh building failed for ChunkPos[x=-6, z=-3]: null
+Mesh building failed for ChunkPos[x=-6, z=-4]: null
+Mesh building failed for ChunkPos[x=-6, z=-5]: null
+[Spawn] Chicken spawned at (-52.5, 75, 34.2) light=15
+[ChunkPerf] loaded=1338 pending=6 cap=1382 maxDist=20 LOD[0/1/2/3]=171/171/319/650 uploads=6
+[Despawn] CHICKEN despawned at (-52.8, 75.0, 33.2) — too far
+[Spawn] Sheep spawned at (-1.0, 99, 11.0) light=15
+[Spawn] Sheep spawned at (0.0, 103, 4.8) light=15
+[ChunkPerf] loaded=1373 pending=1 cap=1382 maxDist=20 LOD[0/1/2/3]=164/154/331/723 uploads=5
+[Spawn] Cow spawned at (-52.0, 70, -65.3) light=15
+[Spawn] Cow spawned at (75.0, 74, 0.9) light=15
+[ChunkPerf] loaded=1381 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=165/172/318/714 uploads=0
+[Despawn] COW despawned at (75.4, 74.0, 1.7) — too far
+[Spawn] Pig spawned at (-55.8, 72, 13.5) light=15
+[Spawn] Cow spawned at (-63.2, 70, -32.1) light=15
+[ChunkPerf] loaded=1382 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=168/170/318/726 uploads=0
+[Despawn] PIG despawned at (-55.8, 72.0, 13.7) — too far
+[Despawn] COW despawned at (-63.2, 70.0, -32.1) — too far
+[Spawn] Chicken spawned at (67.8, 97, -32.1) light=15
+[Spawn] Pig spawned at (-70.0, 70, 8.0) light=15
+[ChunkPerf] loaded=1382 pending=0 cap=1382 maxDist=20 LOD[0/1/2/3]=167/170/318/697 uploads=0
+[Despawn] PIG despawned at (-71.0, 70.0, 8.0) — too far
+[Spawn] Sheep spawned at (57.3, 76, -30.7) light=15
+[Spawn] Cow spawned at (-15.1, 94, 45.0) light=15
+[ChunkPerf] loaded=1378 pending=4 cap=1382 maxDist=20 LOD[0/1/2/3]=167/170/318/709 uploads=6
+[FurnaceManager] Saved 0 furnaces
+[ChestManager] Saved 0 chests
+Auto-saved 1382 chunks
+[2026-02-08T14:50:25.574025Z] [Benchmark] Complete. Writing results...
+[2026-02-08T14:50:25.588803Z] [Benchmark] Results written to: artifacts/world_bench/FIX_C1_BEFORE
+[Benchmark] Complete. Exiting.
+Saving world on exit...
+[FurnaceManager] Saved 0 furnaces
+[ChestManager] Saved 0 chests
+Saved 1382 chunks on exit
+
+BUILD SUCCESSFUL in 1m 3s
+3 actionable tasks: 1 executed, 2 up-to-date

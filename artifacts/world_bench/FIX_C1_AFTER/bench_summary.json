@@ -1,0 +1,22 @@
+{
+  "frame_ms_p50": 32.725,
+  "frame_ms_p95": 36.313,
+  "frame_ms_p99": 42.149,
+  "fps_avg": 30.90,
+  "fps_min": 0.00,
+  "fps_max": 60.00,
+  "total_gc_pause_ms": 115,
+  "max_loaded_chunks": 1382,
+  "max_pending_mesh_jobs": 127,
+  "max_pending_io_jobs": 263,
+  "pending_io_jobs": 263,
+  "bytes_written_total": 1533215,
+  "chunks_saved_total": 2286,
+  "io_flush_ms": 2054,
+  "main_thread_blocked_ms": 0,
+  "io_queue_high_water": 500,
+  "io_jobs_dropped": 582,
+  "io_jobs_merged": 0,
+  "io_jobs_enqueued": 2550,
+  "io_backpressure_ms": 255
+}
