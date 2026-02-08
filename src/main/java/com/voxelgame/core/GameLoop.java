@@ -223,6 +223,11 @@ public class GameLoop {
     private boolean repro = false;
     private String reproOutDir = null;
     private ReproCapture reproRunner = null;
+    
+    // Perf truth mode (correct GPU timing instrumentation)
+    private boolean perfTruth = false;
+    private String perfTruthOutDir = null;
+    private PerfTruth perfTruthRunner = null;
 
     // Track which world is currently loaded
     private String currentWorldFolder = null;
@@ -311,6 +316,12 @@ public class GameLoop {
     public void setRepro(boolean enabled, String outDir) {
         this.repro = enabled;
         this.reproOutDir = outDir;
+    }
+    
+    /** Enable perf truth mode (correct GPU timing instrumentation). */
+    public void setPerfTruth(boolean enabled, String outDir) {
+        this.perfTruth = enabled;
+        this.perfTruthOutDir = outDir;
     }
 
     // Track create-new-world mode (--create flag)
@@ -785,6 +796,14 @@ public class GameLoop {
             reproRunner.setReferences(player, worldTime, renderer, chunkManager, window);
             reproRunner.start();
         }
+        
+        // Initialize perf truth if enabled
+        if (perfTruth) {
+            String outDir = perfTruthOutDir != null ? perfTruthOutDir : "artifacts/perf_truth";
+            perfTruthRunner = new PerfTruth(outDir);
+            perfTruthRunner.setReferences(player, worldTime, renderer, chunkManager, window);
+            perfTruthRunner.start();
+        }
 
         // Switch to in-game state
         screenState = ScreenState.IN_GAME;
@@ -911,12 +930,15 @@ public class GameLoop {
     private void loop() {
         while (!window.shouldClose() &&
                (automationController == null || !automationController.isQuitRequested())) {
-            // Perf snapshot / repro: mark frame begin (wall-clock timing starts here)
+            // Perf snapshot / repro / perf truth: mark frame begin (wall-clock timing starts here)
             if (perfSnapshot && perfSnapshotRunner != null) {
                 perfSnapshotRunner.beginFrame();
             }
             if (repro && reproRunner != null) {
                 reproRunner.beginFrame();
+            }
+            if (perfTruth && perfTruthRunner != null) {
+                perfTruthRunner.beginFrame();
             }
             
             time.update();
@@ -949,12 +971,15 @@ public class GameLoop {
 
             Input.endFrame();
             
-            // Perf snapshot / repro: measure swap time (this is where vsync/GPU blocking happens)
+            // Perf snapshot / repro / perf truth: measure swap time
             if (perfSnapshot && perfSnapshotRunner != null) {
                 perfSnapshotRunner.beginSwap();
             }
             if (repro && reproRunner != null) {
                 reproRunner.beginSwap();
+            }
+            if (perfTruth && perfTruthRunner != null) {
+                perfTruthRunner.beginSwap();
             }
             window.swapBuffers();
             if (perfSnapshot && perfSnapshotRunner != null) {
@@ -964,6 +989,10 @@ public class GameLoop {
             if (repro && reproRunner != null) {
                 reproRunner.endSwap();
                 reproRunner.endFrame(dt);
+            }
+            if (perfTruth && perfTruthRunner != null) {
+                perfTruthRunner.endSwap();
+                perfTruthRunner.endFrame(dt);
             }
         }
     }
@@ -1363,12 +1392,17 @@ public class GameLoop {
             performAutoSave();
         }
 
-        // Perf snapshot / repro: end CPU update phase, begin render
+        // Perf snapshot / repro / perf truth: end CPU update phase
         if (perfSnapshot && perfSnapshotRunner != null) {
             perfSnapshotRunner.endCpuUpdate();
         }
         if (repro && reproRunner != null) {
             reproRunner.endCpuUpdate();
+        }
+        if (perfTruth && perfTruthRunner != null) {
+            perfTruthRunner.endUpdate();
+            perfTruthRunner.endUpload();  // Upload happens inside ChunkManager.update()
+            perfTruthRunner.beginGpuTimer();  // Start GPU timer before render
         }
         
         // Render
@@ -1376,12 +1410,16 @@ public class GameLoop {
         renderGameWorld(w, h, dt);
         profiler.end("Render");
         
-        // Perf snapshot / repro: end CPU render submission
+        // Perf snapshot / repro / perf truth: end CPU render submission
         if (perfSnapshot && perfSnapshotRunner != null) {
             perfSnapshotRunner.endCpuRender();
         }
         if (repro && reproRunner != null) {
             reproRunner.endCpuRender();
+        }
+        if (perfTruth && perfTruthRunner != null) {
+            perfTruthRunner.endGpuTimer();  // End GPU timer after render
+            perfTruthRunner.endRenderSubmit();
         }
 
         // Screenshot (F2) — use framebuffer dimensions for glReadPixels
@@ -1447,6 +1485,12 @@ public class GameLoop {
         // Repro capture mode: check completion
         if (repro && reproRunner != null && reproRunner.isComplete()) {
             System.out.println("[ReproCapture] Complete. Exiting.");
+            window.requestClose();
+        }
+        
+        // Perf truth mode: check completion
+        if (perfTruth && perfTruthRunner != null && perfTruthRunner.isComplete()) {
+            System.out.println("[PerfTruth] Complete. Exiting.");
             window.requestClose();
         }
         

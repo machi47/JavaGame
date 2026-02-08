@@ -41,6 +41,9 @@ public class Main {
         // Repro capture: deterministic scenario with screenshots
         boolean reproMode = false;
         String reproOutDir = null;
+        // Perf truth: correct instrumentation with GPU timing
+        boolean perfTruthMode = false;
+        String perfTruthOutDir = null;
         String directWorldName = null;
         String scriptPath = null;
         String captureOutputDir = null;
@@ -138,9 +141,15 @@ public class Main {
                 case "--repro" -> {
                     reproMode = true;
                     directMode = true;
-                    // Optional output directory
                     if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
                         reproOutDir = args[++i];
+                    }
+                }
+                case "--perf-truth" -> {
+                    perfTruthMode = true;
+                    directMode = true;
+                    if (i + 1 < args.length && !args[i + 1].startsWith("--")) {
+                        perfTruthOutDir = args[++i];
                     }
                 }
                 case "--create" -> {
@@ -200,7 +209,7 @@ public class Main {
         }
 
         // Automation and agent-server modes imply direct mode
-        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode || lightingTestMode || perfCaptureMode || perfSnapshotMode || reproMode) {
+        if (automationMode || agentServerMode || autoTestMode || captureDebugViews || captureSpawnValidation || benchWorldMode || lightingTestMode || perfCaptureMode || perfSnapshotMode || reproMode || perfTruthMode) {
             directMode = true;
         }
 
@@ -256,13 +265,18 @@ public class Main {
         if (reproMode) {
             loop.setRepro(true, reproOutDir);
         }
+        
+        // Set perf truth mode if requested
+        if (perfTruthMode) {
+            loop.setPerfTruth(true, perfTruthOutDir);
+        }
 
         // Direct/create mode skips the menu
         // Capture modes create a new world with fixed seed
-        if (captureDebugViews || captureSpawnValidation || reproMode) {
+        if (captureDebugViews || captureSpawnValidation || reproMode || perfTruthMode) {
             // Use fixed seed for reproducibility (default: 42)
             String seedStr = captureSeed != null ? captureSeed : "42";
-            String worldName = reproMode ? "repro-" + seedStr : "capture-" + seedStr;
+            String worldName = (reproMode || perfTruthMode) ? "repro-" + seedStr : "capture-" + seedStr;
             loop.setCaptureSeed(seedStr);
             loop.setCreateNewWorld(worldName);
         } else if (createMode) {
