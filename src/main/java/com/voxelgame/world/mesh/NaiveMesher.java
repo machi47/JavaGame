@@ -49,9 +49,9 @@ public class NaiveMesher implements Mesher {
         {-1,  0,  0}, // west
     };
 
-    // AO levels: 0 occluders = 1.0, 1 = 0.55, 2 = 0.3, 3 = 0.15
-    // Aggressive curve gives visible depth at block edges and corners
-    private static final float[] AO_LEVELS = {1.0f, 0.55f, 0.3f, 0.15f};
+    // AO levels: 0 occluders = 1.0, 1 = 0.50, 2 = 0.22, 3 = 0.08
+    // Tuned for stronger terrain contrast (less flat-looking surfaces).
+    private static final float[] AO_LEVELS = {1.0f, 0.50f, 0.22f, 0.08f};
 
     /**
      * For each face, the 4 vertices and their 3 AO neighbor offsets.
@@ -358,7 +358,18 @@ public class NaiveMesher implements Mesher {
                         for (int v = 0; v < 4; v++) {
                             float u = (fuv[v][0] == 0) ? uv[0] : uv[2];
                             float vCoord = (fuv[v][1] == 0) ? uv[1] : uv[3];
-                            addVertex(verts, wx + fv[v][0], wy + fv[v][1], wz + fv[v][2],
+
+                            float vx = wx + fv[v][0];
+                            float vy = wy + fv[v][1];
+                            float vz = wz + fv[v][2];
+
+                            // Lower water surface slightly to avoid perfectly-flat full block tops.
+                            // This improves readability and reduces the opaque-sheet look.
+                            if (isTransparent && Blocks.isWater(blockId) && fv[v][1] > 0.5f) {
+                                vy -= 0.12f;
+                            }
+
+                            addVertex(verts, vx, vy, vz,
                                      u, vCoord, vertSkyLight[v], 
                                      vertBlockLightRGB[v][0], vertBlockLightRGB[v][1], vertBlockLightRGB[v][2],
                                      vertHorizonWeight[v],
@@ -562,7 +573,16 @@ public class NaiveMesher implements Mesher {
                         for (int v = 0; v < 4; v++) {
                             float u = (fuv[v][0] == 0) ? uv[0] : uv[2];
                             float vCoord = (fuv[v][1] == 0) ? uv[1] : uv[3];
-                            addVertexPrimitive(verts, wx + fv[v][0], wy + fv[v][1], wz + fv[v][2],
+
+                            float vx = wx + fv[v][0];
+                            float vy = wy + fv[v][1];
+                            float vz = wz + fv[v][2];
+
+                            if (isTransparent && Blocks.isWater(blockId) && fv[v][1] > 0.5f) {
+                                vy -= 0.12f;
+                            }
+
+                            addVertexPrimitive(verts, vx, vy, vz,
                                               u, vCoord, vertSkyLight[v], 
                                               vertBlockLightRGB[v][0], vertBlockLightRGB[v][1], vertBlockLightRGB[v][2],
                                               vertHorizonWeight[v],

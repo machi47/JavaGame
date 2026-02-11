@@ -38,7 +38,7 @@ import static org.lwjgl.opengl.GL33.*;
  */
 public class Renderer {
 
-    private static final float WATER_ALPHA = 0.55f;
+    private static final float WATER_ALPHA = 0.42f;
 
     private Shader blockShader;
     private TextureAtlas atlas;
@@ -268,6 +268,15 @@ public class Renderer {
     }
 
     public void render(Camera camera, int windowWidth, int windowHeight) {
+        // Defensive baseline to prevent GL state leakage between passes/subsystems.
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(true);
+        glDisable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+
         // Sync camera far plane with LOD config (prevents frustum from extending way beyond render distance)
         if (lodConfig != null) {
             camera.setFarPlane(lodConfig.getFarPlane());
@@ -450,6 +459,8 @@ public class Renderer {
         glDepthMask(true);
         glEnable(GL_CULL_FACE);
         glDisable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_LESS);
 
         blockShader.unbind();
     }
