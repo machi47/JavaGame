@@ -23,6 +23,15 @@ public class Chunk {
     private final byte[] blockLightB;
     private boolean dirty = true;
     private boolean lightDirty = true;
+
+    // ---- Heightmap cache for fast visibility calculations ----
+    /**
+     * Cached max solid block height for each X,Z column.
+     * heightmap[x * CHUNK_SIZE + z] = highest Y with solid block, or -1 if empty.
+     * Invalidated when blocks change, lazily recomputed on first access.
+     */
+    private short[] heightmap;
+    private volatile boolean heightmapDirty = true;
     private ChunkMesh mesh;
     private ChunkMesh transparentMesh;
 
@@ -73,6 +82,7 @@ public class Chunk {
         blocks[index(x, y, z)] = (byte) blockId;
         dirty = true;
         modified = true;
+        heightmapDirty = true; // Invalidate heightmap cache
     }
 
     /** 
@@ -248,6 +258,98 @@ public class Chunk {
     public boolean isLightDirty() { return lightDirty; }
     public void setLightDirty(boolean d) { this.lightDirty = d; }
     public ChunkPos getPos() { return pos; }
+
+    // ========================================================================
+    // Heightmap Cache for Fast Visibility Calculations
+    // ========================================================================
+
+    /**
+     * Get the highest solid block Y coordinate for a column.
+     * Uses cached heightmap for O(1) lookups after initial computation.
+     *
+     * @param x local X (0-15)
+     * @param z local Z (0-15)
+     * @return highest Y with solid block, or -1 if column is empty
+     */
+    public int getHeightAt(int x, int z) {
+        if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
+            z < 0 || z >= WorldConstants.CHUNK_SIZE) {
+            return -1;
+        }
+        ensureHeightmap();
+        return heightmap[x * WorldConstants.CHUNK_SIZE + z];
+    }
+
+    /**
+     * Check if a position has clear sky access (no solid blocks above).
+     * Uses cached heightmap for O(1) lookup.
+     *
+     * @return true if position Y is at or above the highest solid block
+     */
+    public boolean hasSkyAccess(int x, int y, int z) {
+        if (x < 0 || x >= WorldConstants.CHUNK_SIZE ||
+            z < 0 || z >= WorldConstants.CHUNK_SIZE) {
+            return true; // Out of bounds treated as sky access
+        }
+        if (y >= WorldConstants.WORLD_HEIGHT) return true;
+        ensureHeightmap();
+        return y > heightmap[x * WorldConstants.CHUNK_SIZE + z];
+    }
+
+    /**
+     * Ensure heightmap is computed. Called lazily on first access.
+     * Thread-safe via double-checked locking pattern.
+     */
+    private void ensureHeightmap() {
+        if (!heightmapDirty && heightmap != null) return;
+
+        synchronized (this) {
+            if (!heightmapDirty && heightmap != null) return;
+
+            if (heightmap == null) {
+                heightmap = new short[WorldConstants.CHUNK_SIZE * WorldConstants.CHUNK_SIZE];
+            }
+
+            // Compute max height for each column
+            for (int x = 0; x < WorldConstants.CHUNK_SIZE; x++) {
+                for (int z = 0; z < WorldConstants.CHUNK_SIZE; z++) {
+                    int idx = x * WorldConstants.CHUNK_SIZE + z;
+                    heightmap[idx] = -1;
+
+                    for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
+                        int blockId = blocks[index(x, y, z)] & 0xFF;
+                        if (blockId != 0) {
+                            Block block = Blocks.get(blockId);
+                            if (block.solid() && !block.transparent()) {
+                                heightmap[idx] = (short) y;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            heightmapDirty = false;
+        }
+    }
+
+    /**
+     * Invalidate heightmap cache. Called when blocks are modified.
+     */
+    public void invalidateHeightmap() {
+        heightmapDirty = true;
+    }
+
+    /**
+     * Get the entire heightmap array for batch processing.
+     * Returns null if not yet computed.
+     */
+    public short[] getHeightmapSnapshot() {
+        ensureHeightmap();
+        short[] copy = new short[heightmap.length];
+        System.arraycopy(heightmap, 0, copy, 0, heightmap.length);
+        return copy;
+    }
     
     /** Direct access to block array for zero-overhead reads in meshing snapshot. */
     public byte[] getBlocksArray() { return blocks; }

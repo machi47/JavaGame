@@ -110,9 +110,20 @@ public class HeightfieldVisibility {
 
     /**
      * Check if there's a clear path straight up to the sky.
-     * This is the simple column check from Phase 1.
+     * Uses cached heightmap when available for O(1) lookup.
      */
     private static boolean isZenithClear(WorldAccess world, int x, int y, int z) {
+        // Try to use chunk's cached heightmap for O(1) lookup
+        int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
+        int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
+        Chunk chunk = world.getChunk(cx, cz);
+        if (chunk != null) {
+            int lx = x - cx * WorldConstants.CHUNK_SIZE;
+            int lz = z - cz * WorldConstants.CHUNK_SIZE;
+            return chunk.hasSkyAccess(lx, y, lz);
+        }
+
+        // Fallback: column scan (slower)
         for (int checkY = y + 1; checkY < WorldConstants.WORLD_HEIGHT; checkY++) {
             int blockId = world.getBlock(x, checkY, z);
             Block block = Blocks.get(blockId);
@@ -195,12 +206,22 @@ public class HeightfieldVisibility {
     }
 
     /**
-     * Quick check if a position can see the sky (simplified column check).
+     * Quick check if a position can see the sky.
+     * Uses cached heightmap when available for O(1) lookup.
      */
     private static boolean canPositionSeeSky(WorldAccess world, int x, int y, int z) {
-        // Check a limited distance up (not the full world height for performance)
+        // Try to use chunk's cached heightmap for O(1) lookup
+        int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
+        int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
+        Chunk chunk = world.getChunk(cx, cz);
+        if (chunk != null) {
+            int lx = x - cx * WorldConstants.CHUNK_SIZE;
+            int lz = z - cz * WorldConstants.CHUNK_SIZE;
+            return chunk.hasSkyAccess(lx, y, lz);
+        }
+
+        // Fallback: limited column scan
         int checkLimit = Math.min(y + VERTICAL_CHECK_HEIGHT, WorldConstants.WORLD_HEIGHT);
-        
         for (int checkY = y + 1; checkY < checkLimit; checkY++) {
             int blockId = world.getBlock(x, checkY, z);
             Block block = Blocks.get(blockId);
