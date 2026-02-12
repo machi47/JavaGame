@@ -39,24 +39,25 @@ public class LODConfig {
     public static final int ABSOLUTE_MAX_CHUNKS = 2500;
 
     // ---- Performance tuning ----
+    // Optimized for high-speed flight (16 chunks/sec target)
 
     /** Max chunk generations per frame for LOD 0-1 (close chunks). */
-    public static final int MAX_CLOSE_GEN_PER_FRAME = 4;
+    public static final int MAX_CLOSE_GEN_PER_FRAME = 8;
 
     /** Max chunk generations per frame for LOD 2-3 (distant chunks). */
-    public static final int MAX_FAR_GEN_PER_FRAME = 6;
+    public static final int MAX_FAR_GEN_PER_FRAME = 12;
 
-    /** Max mesh uploads per frame (GPU operations). Increased for faster loading. */
-    public static final int MAX_MESH_UPLOADS_PER_FRAME = 12;
+    /** Max mesh uploads per frame (GPU operations). Doubled for high-speed streaming. */
+    public static final int MAX_MESH_UPLOADS_PER_FRAME = 24;
 
     /** Max LOD mesh uploads per frame (separate budget for distant). */
-    public static final int MAX_LOD_UPLOADS_PER_FRAME = 16;
+    public static final int MAX_LOD_UPLOADS_PER_FRAME = 32;
 
-    /** Generation thread pool size. */
-    public static final int GEN_THREAD_COUNT = 4;
+    /** Generation thread pool size. Increased for modern multi-core CPUs. */
+    public static final int GEN_THREAD_COUNT = 8;
 
-    /** Mesh building thread pool size. */
-    public static final int MESH_THREAD_COUNT = 3;
+    /** Mesh building thread pool size. Increased to match generation throughput. */
+    public static final int MESH_THREAD_COUNT = 6;
 
     // ---- Quality presets ----
 

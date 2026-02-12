@@ -7,25 +7,31 @@ package com.voxelgame.bench;
 public class BenchFixes {
     
     // Fix A: Use primitive float[]/int[] builders instead of ArrayList<Float>/ArrayList<Integer>
-    public static boolean FIX_MESH_PRIMITIVE_BUFFERS = false;
-    
+    // ENABLED by default - reduces GC pressure significantly
+    public static boolean FIX_MESH_PRIMITIVE_BUFFERS = true;
+
     // Fix B: Use packed long keys instead of new ChunkPos() per lookup (DEPRECATED - use B2)
-    public static boolean FIX_CHUNKPOS_NO_ALLOC = false;
-    
+    public static boolean FIX_CHUNKPOS_NO_ALLOC = true;
+
     // Fix B2: Use fastutil Long2ObjectOpenHashMap with RW lock (no boxing at all)
-    public static boolean FIX_B2_PRIMITIVE_MAP = false;
-    
+    // ENABLED by default - eliminates boxing overhead in chunk lookups
+    public static boolean FIX_B2_PRIMITIVE_MAP = true;
+
     // Fix B3: Snapshot-based meshing (resolve neighbors once, then pure array access)
-    public static boolean FIX_B3_SNAPSHOT_MESH = false;
-    
+    // ENABLED by default - zero map lookups in meshing hot path
+    public static boolean FIX_B3_SNAPSHOT_MESH = true;
+
     // Fix B3.1: Move snapshot creation off main thread (worker resolves neighbors at job start)
-    public static boolean FIX_B31_SNAPSHOT_OFFTHREAD = false;
-    
+    // ENABLED by default - removes main thread latency for neighbor resolution
+    public static boolean FIX_B31_SNAPSHOT_OFFTHREAD = true;
+
     // Fix C: Async region IO instead of sync writes on main thread
-    public static boolean FIX_ASYNC_REGION_IO = false;
-    
+    // ENABLED by default - non-blocking chunk saves
+    public static boolean FIX_ASYNC_REGION_IO = true;
+
     // Fix C1 (V2): Bounded backlog + stronger coalescing + adaptive save rate
-    public static boolean FIX_ASYNC_REGION_IO_V2 = false;
+    // ENABLED by default - prevents IO queue explosion
+    public static boolean FIX_ASYNC_REGION_IO_V2 = true;
     
     /**
      * Parse --bench-fix argument: KEY=true|false
