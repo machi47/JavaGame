@@ -43,8 +43,8 @@ public class ShadowRenderer {
     /** Whether shadow system is initialized. */
     private boolean initialized = false;
     
-    /** Whether shadows are enabled (disabled at night). */
-    private boolean shadowsEnabled = true;
+    /** Whether shadows are enabled (disabled for performance testing). */
+    private boolean shadowsEnabled = false;
 
     /**
      * Initialize shadow FBOs, textures, and shader.

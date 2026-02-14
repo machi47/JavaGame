@@ -59,12 +59,20 @@ public final class NeighborhoodSnapshot {
      */
     public int getBlock(int lx, int y, int lz) {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 0;
-        
+
+        // Handle diagonal corners - we don't have diagonal neighbor chunks
+        // Return 0 (air) for any access that would require a diagonal chunk
+        boolean needsXNeighbor = (lx < 0 || lx >= WorldConstants.CHUNK_SIZE);
+        boolean needsZNeighbor = (lz < 0 || lz >= WorldConstants.CHUNK_SIZE);
+        if (needsXNeighbor && needsZNeighbor) {
+            return 0; // Diagonal access - no chunk data available
+        }
+
         // Determine which chunk and adjust coords
         byte[] blocks;
         int adjX = lx;
         int adjZ = lz;
-        
+
         if (lx < 0) {
             blocks = nxBlocks;
             adjX = lx + WorldConstants.CHUNK_SIZE;
@@ -80,9 +88,9 @@ public final class NeighborhoodSnapshot {
         } else {
             blocks = centerBlocks;
         }
-        
+
         if (blocks == null) return 0;
-        
+
         int idx = adjX + adjZ * WorldConstants.CHUNK_SIZE + y * WorldConstants.CHUNK_SIZE * WorldConstants.CHUNK_SIZE;
         return blocks[idx] & 0xFF;
     }
@@ -113,10 +121,17 @@ public final class NeighborhoodSnapshot {
      */
     public float[] getBlockLightRGB(int lx, int y, int lz) {
         if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return new float[]{0, 0, 0};
-        
+
+        // Handle diagonal corners - return black (no light data)
+        boolean needsXNeighbor = (lx < 0 || lx >= WorldConstants.CHUNK_SIZE);
+        boolean needsZNeighbor = (lz < 0 || lz >= WorldConstants.CHUNK_SIZE);
+        if (needsXNeighbor && needsZNeighbor) {
+            return new float[]{0, 0, 0};
+        }
+
         Chunk chunk;
         int adjX = lx, adjZ = lz;
-        
+
         if (lx < 0) {
             chunk = nx;
             adjX = lx + WorldConstants.CHUNK_SIZE;
@@ -132,7 +147,7 @@ public final class NeighborhoodSnapshot {
         } else {
             chunk = center;
         }
-        
+
         if (chunk == null) return new float[]{0, 0, 0};
         return chunk.getBlockLightRGB(adjX, y, adjZ);
     }

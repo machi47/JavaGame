@@ -75,7 +75,7 @@ public class Window {
         }
 
         glfwMakeContextCurrent(handle);
-        glfwSwapInterval(1); // VSync
+        glfwSwapInterval(0); // VSync OFF - measure true performance
         glfwShowWindow(handle);
     }
 

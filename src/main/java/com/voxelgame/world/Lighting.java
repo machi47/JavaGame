@@ -51,26 +51,45 @@ public class Lighting {
 
     /**
      * Compute sky visibility for a single column in the chunk.
-     * Blocks have visibility 1.0 if they can see the sky directly above,
-     * 0.0 if there's any opaque block above them.
+     *
+     * Visibility is now a gradient, not binary:
+     * - Air: full transmission (1.0)
+     * - Water: attenuates by 0.75 per block (gets dark with depth)
+     * - Leaves/glass: attenuates by 0.9 per block
+     * - Opaque: blocks completely (0.0)
      */
     private static void computeColumnVisibility(Chunk chunk, int x, int z) {
-        boolean canSeeSky = true;
-        
+        float visibility = 1.0f;
+
         for (int y = WorldConstants.WORLD_HEIGHT - 1; y >= 0; y--) {
             int blockId = chunk.getBlock(x, y, z);
             Block block = Blocks.get(blockId);
-            
+
             if (isOpaque(block)) {
-                // This block is opaque - it and everything below can't see sky
-                canSeeSky = false;
+                // Opaque block - completely blocks sky
+                visibility = 0.0f;
                 chunk.setSkyVisibility(x, y, z, 0.0f);
-            } else if (canSeeSky) {
-                // Transparent block with clear sky above
-                chunk.setSkyVisibility(x, y, z, 1.0f);
             } else {
-                // Transparent block but something opaque is above
-                chunk.setSkyVisibility(x, y, z, 0.0f);
+                // Set visibility for this block BEFORE attenuation
+                // (the block itself receives light from above)
+                chunk.setSkyVisibility(x, y, z, visibility);
+
+                // Then apply attenuation for blocks below
+                if (Blocks.isWater(blockId)) {
+                    // Water HEAVILY attenuates light - every block of water cuts light in half
+                    // After 4 blocks: 0.5^4 = 6.25% light
+                    // After 8 blocks: 0.5^8 = 0.4% light (nearly black)
+                    visibility *= 0.5f;
+                } else if (blockId == Blocks.LEAVES.id()) {
+                    // Leaves slightly attenuate
+                    visibility *= 0.85f;
+                }
+                // Air and glass don't attenuate
+
+                // Clamp to minimum threshold
+                if (visibility < 0.02f) {
+                    visibility = 0.0f;
+                }
             }
         }
     }

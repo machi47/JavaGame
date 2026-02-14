@@ -32,8 +32,11 @@ public class Chunk {
      */
     private short[] heightmap;
     private volatile boolean heightmapDirty = true;
-    private ChunkMesh mesh;
-    private ChunkMesh transparentMesh;
+
+    // ---- Mesh storage (VOLATILE for thread safety between upload/render threads) ----
+    private volatile ChunkMesh mesh;
+    private volatile ChunkMesh transparentMesh;
+    private final Object meshLock = new Object();
 
     // ---- LOD mesh storage ----
     /** LOD meshes indexed by LOD level (0-3). LOD 0 uses the main mesh/transparentMesh. */
@@ -42,6 +45,26 @@ public class Chunk {
     private volatile LODLevel currentLOD = LODLevel.LOD_0;
     /** Whether this chunk has a valid LOD mesh for its current level. */
     private volatile boolean lodMeshReady = false;
+
+    // ---- Section-based rendering (8 vertical sections of 16×16×16) ----
+    /**
+     * Section state flags. Each section (16×16×16) can be:
+     * - EMPTY (0): all air, no mesh needed
+     * - MIXED (1): has both air and solid blocks, needs full meshing
+     * - SOLID (2): all solid opaque blocks, only boundary faces needed
+     */
+    public static final byte SECTION_EMPTY = 0;
+    public static final byte SECTION_MIXED = 1;
+    public static final byte SECTION_SOLID = 2;
+
+    private final byte[] sectionFlags = new byte[WorldConstants.SECTIONS_PER_CHUNK];
+    private volatile boolean sectionFlagsDirty = true;
+
+    /** Per-section opaque meshes. Null if section is empty or not yet meshed. */
+    private final ChunkMesh[] sectionMeshes = new ChunkMesh[WorldConstants.SECTIONS_PER_CHUNK];
+    /** Per-section transparent meshes. Null if section has no transparent blocks. */
+    private final ChunkMesh[] sectionTransparentMeshes = new ChunkMesh[WorldConstants.SECTIONS_PER_CHUNK];
+    private final Object sectionMeshLock = new Object();
 
     /**
      * Whether this chunk has been modified by the player (block placed/removed)
@@ -83,6 +106,7 @@ public class Chunk {
         dirty = true;
         modified = true;
         heightmapDirty = true; // Invalidate heightmap cache
+        sectionFlagsDirty = true; // Invalidate section flags
     }
 
     /** 
@@ -402,19 +426,33 @@ public class Chunk {
     }
 
     public ChunkMesh getMesh() { return mesh; }
-    public void setMesh(ChunkMesh mesh) {
-        if (this.mesh != null) {
-            this.mesh.dispose();
+
+    /**
+     * Set the opaque mesh. Thread-safe via synchronized block.
+     * Disposes old mesh if present.
+     */
+    public void setMesh(ChunkMesh newMesh) {
+        synchronized (meshLock) {
+            if (this.mesh != null) {
+                this.mesh.dispose();
+            }
+            this.mesh = newMesh;
         }
-        this.mesh = mesh;
     }
 
     public ChunkMesh getTransparentMesh() { return transparentMesh; }
-    public void setTransparentMesh(ChunkMesh mesh) {
-        if (this.transparentMesh != null) {
-            this.transparentMesh.dispose();
+
+    /**
+     * Set the transparent mesh. Thread-safe via synchronized block.
+     * Disposes old mesh if present.
+     */
+    public void setTransparentMesh(ChunkMesh newMesh) {
+        synchronized (meshLock) {
+            if (this.transparentMesh != null) {
+                this.transparentMesh.dispose();
+            }
+            this.transparentMesh = newMesh;
         }
-        this.transparentMesh = mesh;
     }
 
     // ---- LOD mesh management ----
@@ -483,6 +521,164 @@ public class Chunk {
         return null;
     }
 
+    // ========================================================================
+    // Section-Based Rendering Methods
+    // ========================================================================
+
+    /**
+     * Get the section index (0-7) for a given Y coordinate.
+     */
+    public static int getSectionIndex(int y) {
+        return y / WorldConstants.SECTION_HEIGHT;
+    }
+
+    /**
+     * Get the section flag for a given section index.
+     * Returns SECTION_EMPTY, SECTION_MIXED, or SECTION_SOLID.
+     */
+    public byte getSectionFlag(int sectionIndex) {
+        if (sectionIndex < 0 || sectionIndex >= WorldConstants.SECTIONS_PER_CHUNK) {
+            return SECTION_EMPTY;
+        }
+        ensureSectionFlags();
+        return sectionFlags[sectionIndex];
+    }
+
+    /**
+     * Check if a section needs meshing (is MIXED or SOLID with boundary faces).
+     */
+    public boolean sectionNeedsMesh(int sectionIndex) {
+        byte flag = getSectionFlag(sectionIndex);
+        return flag != SECTION_EMPTY;
+    }
+
+    /**
+     * Compute section flags for all 8 sections.
+     * Called lazily on first access or when blocks change.
+     */
+    private void ensureSectionFlags() {
+        if (!sectionFlagsDirty) return;
+
+        synchronized (this) {
+            if (!sectionFlagsDirty) return;
+
+            for (int section = 0; section < WorldConstants.SECTIONS_PER_CHUNK; section++) {
+                int yStart = section * WorldConstants.SECTION_HEIGHT;
+                int yEnd = yStart + WorldConstants.SECTION_HEIGHT;
+
+                boolean hasAir = false;
+                boolean hasSolid = false;
+                boolean hasTransparent = false;
+
+                outer:
+                for (int x = 0; x < WorldConstants.CHUNK_SIZE; x++) {
+                    for (int z = 0; z < WorldConstants.CHUNK_SIZE; z++) {
+                        for (int y = yStart; y < yEnd; y++) {
+                            int blockId = blocks[index(x, y, z)] & 0xFF;
+                            if (blockId == 0) {
+                                hasAir = true;
+                            } else {
+                                Block block = Blocks.get(blockId);
+                                if (block.transparent()) {
+                                    hasTransparent = true;
+                                    hasAir = true; // Transparent counts as "not fully solid"
+                                }
+                                if (block.solid() && !block.transparent()) {
+                                    hasSolid = true;
+                                }
+                            }
+                            // Early exit if we know it's mixed
+                            if ((hasAir || hasTransparent) && hasSolid) {
+                                sectionFlags[section] = SECTION_MIXED;
+                                continue outer;
+                            }
+                        }
+                    }
+                }
+
+                // Determine final flag
+                if (!hasSolid && !hasTransparent) {
+                    sectionFlags[section] = SECTION_EMPTY;
+                } else if (!hasAir && hasSolid && !hasTransparent) {
+                    sectionFlags[section] = SECTION_SOLID;
+                } else {
+                    sectionFlags[section] = SECTION_MIXED;
+                }
+            }
+
+            sectionFlagsDirty = false;
+        }
+    }
+
+    /**
+     * Invalidate section flags. Called when blocks change.
+     */
+    public void invalidateSectionFlags() {
+        sectionFlagsDirty = true;
+    }
+
+    /**
+     * Get the opaque mesh for a section.
+     */
+    public ChunkMesh getSectionMesh(int sectionIndex) {
+        if (sectionIndex < 0 || sectionIndex >= WorldConstants.SECTIONS_PER_CHUNK) {
+            return null;
+        }
+        return sectionMeshes[sectionIndex];
+    }
+
+    /**
+     * Set the opaque mesh for a section.
+     */
+    public void setSectionMesh(int sectionIndex, ChunkMesh mesh) {
+        if (sectionIndex < 0 || sectionIndex >= WorldConstants.SECTIONS_PER_CHUNK) {
+            return;
+        }
+        synchronized (sectionMeshLock) {
+            if (sectionMeshes[sectionIndex] != null) {
+                sectionMeshes[sectionIndex].dispose();
+            }
+            sectionMeshes[sectionIndex] = mesh;
+        }
+    }
+
+    /**
+     * Get the transparent mesh for a section.
+     */
+    public ChunkMesh getSectionTransparentMesh(int sectionIndex) {
+        if (sectionIndex < 0 || sectionIndex >= WorldConstants.SECTIONS_PER_CHUNK) {
+            return null;
+        }
+        return sectionTransparentMeshes[sectionIndex];
+    }
+
+    /**
+     * Set the transparent mesh for a section.
+     */
+    public void setSectionTransparentMesh(int sectionIndex, ChunkMesh mesh) {
+        if (sectionIndex < 0 || sectionIndex >= WorldConstants.SECTIONS_PER_CHUNK) {
+            return;
+        }
+        synchronized (sectionMeshLock) {
+            if (sectionTransparentMeshes[sectionIndex] != null) {
+                sectionTransparentMeshes[sectionIndex].dispose();
+            }
+            sectionTransparentMeshes[sectionIndex] = mesh;
+        }
+    }
+
+    /**
+     * Check if any section has a mesh (for compatibility with existing code).
+     */
+    public boolean hasAnySectionMesh() {
+        for (int i = 0; i < WorldConstants.SECTIONS_PER_CHUNK; i++) {
+            if (sectionMeshes[i] != null || sectionTransparentMeshes[i] != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void dispose() {
         if (mesh != null) {
             mesh.dispose();
@@ -496,6 +692,17 @@ public class Chunk {
             if (lodMeshes[i] != null) {
                 lodMeshes[i].dispose();
                 lodMeshes[i] = null;
+            }
+        }
+        // Dispose section meshes
+        for (int i = 0; i < WorldConstants.SECTIONS_PER_CHUNK; i++) {
+            if (sectionMeshes[i] != null) {
+                sectionMeshes[i].dispose();
+                sectionMeshes[i] = null;
+            }
+            if (sectionTransparentMeshes[i] != null) {
+                sectionTransparentMeshes[i].dispose();
+                sectionTransparentMeshes[i] = null;
             }
         }
     }

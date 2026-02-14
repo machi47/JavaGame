@@ -10,24 +10,24 @@ import static org.lwjgl.opengl.GL33.*;
 /**
  * GPU-side mesh data for a chunk. Holds VAO/VBO/EBO handles,
  * vertex count, and manages upload/disposal of vertex data.
- * 
- * Phase 4 vertex format: [x, y, z, u, v, skyVisibility, blockLightR, blockLightG, blockLightB, horizonWeight, indirectR, indirectG, indirectB]
- * - 13 floats per vertex
- * - blockLightR/G/B: RGB block light from colored light sources (torch=orange, lava=red, etc.)
- * - horizonWeight: 0-1 how much horizon vs zenith is visible
- * - indirectRGB: one-bounce GI from irradiance probes
+ *
+ * MINIMAL vertex format: [x, y, z, u, v, light] = 6 floats per vertex
+ * - light: combined sky/ao/face lighting baked into single value
  */
 public class ChunkMesh {
 
+    /** MINIMAL 6-float format for maximum performance. */
+    public static final int MINIMAL_VERTEX_SIZE = 6;
+
     /** Number of floats per vertex in the Phase 4 format (RGB block light). */
     public static final int VERTEX_SIZE = 13;
-    
+
     /** Number of floats per vertex in the Phase 3 format (scalar block light). */
     public static final int PHASE3_VERTEX_SIZE = 11;
-    
+
     /** Number of floats per vertex in the Phase 2 format. */
     public static final int PHASE2_VERTEX_SIZE = 8;
-    
+
     /** Number of floats per vertex in the legacy format (Phase 1). */
     public static final int LEGACY_VERTEX_SIZE = 7;
 
@@ -75,31 +75,36 @@ public class ChunkMesh {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxBuf, GL_DYNAMIC_DRAW);
         MemoryUtil.memFree(idxBuf);
 
-        // Detect vertex format based on array size
-        // Check if this is Phase 4 (13-float), Phase 3 (11-float), Phase 2 (8-float), or legacy (7-float)
-        int stride;
-        int vertexCount13 = vertices.length / VERTEX_SIZE;
-        int vertexCount11 = vertices.length / PHASE3_VERTEX_SIZE;
-        int vertexCount8 = vertices.length / PHASE2_VERTEX_SIZE;
-        int vertexCount7 = vertices.length / LEGACY_VERTEX_SIZE;
-        
-        if (vertices.length > 0 && vertices.length == vertexCount13 * VERTEX_SIZE) {
-            stride = VERTEX_SIZE * Float.BYTES;
-            setupVertexAttributes13(stride);
-        } else if (vertices.length > 0 && vertices.length == vertexCount11 * PHASE3_VERTEX_SIZE) {
-            stride = PHASE3_VERTEX_SIZE * Float.BYTES;
-            setupVertexAttributes11(stride);
-        } else if (vertices.length > 0 && vertices.length == vertexCount8 * PHASE2_VERTEX_SIZE) {
-            stride = PHASE2_VERTEX_SIZE * Float.BYTES;
-            setupVertexAttributes8(stride);
-        } else {
-            // Legacy 7-float format (backward compatibility)
-            stride = LEGACY_VERTEX_SIZE * Float.BYTES;
-            setupVertexAttributes7(stride);
-        }
+        // MINIMAL BASELINE: Always use 6-float format
+        // Format: [x, y, z, u, v, light] per vertex
+        int stride = MINIMAL_VERTEX_SIZE * Float.BYTES;
+        setupVertexAttributes6(stride);
 
         glBindVertexArray(0);
         uploaded = true;
+    }
+
+    /**
+     * Setup vertex attributes for MINIMAL 6-float format.
+     * [x, y, z, u, v, light]
+     */
+    private void setupVertexAttributes6(int stride) {
+        // Position (location 0)
+        glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, 0);
+        glEnableVertexAttribArray(0);
+
+        // TexCoord (location 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, false, stride, 3L * Float.BYTES);
+        glEnableVertexAttribArray(1);
+
+        // Light (location 2) — combined lighting value
+        glVertexAttribPointer(2, 1, GL_FLOAT, false, stride, 5L * Float.BYTES);
+        glEnableVertexAttribArray(2);
+
+        // Disable unused attributes (locations 3-9)
+        for (int i = 3; i <= 9; i++) {
+            glDisableVertexAttribArray(i);
+        }
     }
 
     /**
@@ -317,16 +322,9 @@ public class ChunkMesh {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, idxBuf, GL_DYNAMIC_DRAW);
         MemoryUtil.memFree(idxBuf);
 
-        int stride = vertexSize * Float.BYTES;
-        if (vertexSize == VERTEX_SIZE) {
-            setupVertexAttributes13(stride);
-        } else if (vertexSize == PHASE3_VERTEX_SIZE) {
-            setupVertexAttributes11(stride);
-        } else if (vertexSize == PHASE2_VERTEX_SIZE) {
-            setupVertexAttributes8(stride);
-        } else {
-            setupVertexAttributes7(stride);
-        }
+        // MINIMAL BASELINE: Always use 6-float format
+        int stride = MINIMAL_VERTEX_SIZE * Float.BYTES;
+        setupVertexAttributes6(stride);
 
         glBindVertexArray(0);
         uploaded = true;
@@ -334,7 +332,7 @@ public class ChunkMesh {
 
     /**
      * Legacy upload for quad-count based meshes (auto-generates indices).
-     * Vertex format: [x, y, z, u, v, skyVisibility, blockLight] per vertex.
+     * Vertex format: [x, y, z, u, v, light] per vertex.
      * Quads are turned into triangles via index buffer.
      */
     public void upload(float[] vertices, int quadCount) {

@@ -32,7 +32,12 @@ public class BenchFixes {
     // Fix C1 (V2): Bounded backlog + stronger coalescing + adaptive save rate
     // ENABLED by default - prevents IO queue explosion
     public static boolean FIX_ASYNC_REGION_IO_V2 = true;
-    
+
+    // Fix D: Section-based meshing (skip empty 16×16×16 sections)
+    // DISABLED - draw call multiplication outweighs vertex reduction benefit
+    // TODO: Batch adjacent sections into single meshes before re-enabling
+    public static boolean FIX_SECTION_MESHING = false;
+
     /**
      * Parse --bench-fix argument: KEY=true|false
      */
@@ -51,12 +56,13 @@ public class BenchFixes {
             case "FIX_B31_SNAPSHOT_OFFTHREAD" -> FIX_B31_SNAPSHOT_OFFTHREAD = value;
             case "FIX_ASYNC_REGION_IO" -> FIX_ASYNC_REGION_IO = value;
             case "FIX_ASYNC_REGION_IO_V2" -> FIX_ASYNC_REGION_IO_V2 = value;
+            case "FIX_SECTION_MESHING" -> FIX_SECTION_MESHING = value;
         }
     }
     
     public static String status() {
         return String.format(
-            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_B3_SNAPSHOT_MESH=%s, FIX_B31_SNAPSHOT_OFFTHREAD=%s, FIX_ASYNC_REGION_IO=%s, FIX_ASYNC_REGION_IO_V2=%s",
-            FIX_MESH_PRIMITIVE_BUFFERS, FIX_B3_SNAPSHOT_MESH, FIX_B31_SNAPSHOT_OFFTHREAD, FIX_ASYNC_REGION_IO, FIX_ASYNC_REGION_IO_V2);
+            "FIX_MESH_PRIMITIVE_BUFFERS=%s, FIX_B3_SNAPSHOT_MESH=%s, FIX_B31_SNAPSHOT_OFFTHREAD=%s, FIX_ASYNC_REGION_IO=%s, FIX_ASYNC_REGION_IO_V2=%s, FIX_SECTION_MESHING=%s",
+            FIX_MESH_PRIMITIVE_BUFFERS, FIX_B3_SNAPSHOT_MESH, FIX_B31_SNAPSHOT_OFFTHREAD, FIX_ASYNC_REGION_IO, FIX_ASYNC_REGION_IO_V2, FIX_SECTION_MESHING);
     }
 }

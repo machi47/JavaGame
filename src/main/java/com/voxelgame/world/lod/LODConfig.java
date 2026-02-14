@@ -127,13 +127,21 @@ public class LODConfig {
 
     /**
      * Determine the LOD level for a chunk at the given distance (in chunks).
+     *
+     * LOD DISABLED: Always returns LOD_0 for full detail rendering at all distances.
+     * This ensures water and all transparent geometry renders everywhere.
+     * Focus optimization efforts on streaming/data structures, not visual degradation.
      */
     public LODLevel getLevelForDistance(int distSq) {
-        // Use squared distances for efficiency
-        if (distSq <= lodThreshold * lodThreshold) return LODLevel.LOD_0;
-        if (distSq <= lod2Start * lod2Start) return LODLevel.LOD_1;
-        if (distSq <= lod3Start * lod3Start) return LODLevel.LOD_2;
-        return LODLevel.LOD_3;
+        // LOD DISABLED - render full detail at all distances
+        // The previous LOD system caused water to not render at distance
+        return LODLevel.LOD_0;
+
+        // Original LOD logic (disabled):
+        // if (distSq <= lodThreshold * lodThreshold) return LODLevel.LOD_0;
+        // if (distSq <= lod2Start * lod2Start) return LODLevel.LOD_1;
+        // if (distSq <= lod3Start * lod3Start) return LODLevel.LOD_2;
+        // return LODLevel.LOD_3;
     }
 
     /**

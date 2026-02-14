@@ -236,10 +236,14 @@ public class HeightfieldVisibility {
      * Fast visibility computation for meshing.
      * Uses the existing column-based visibility as a base and adds horizon check
      * only when under an overhang (zenith blocked).
-     * 
+     *
+     * IMPORTANT: If existingVisibility is between 0 and 1 (not binary), it indicates
+     * light attenuation through water/translucent blocks. We should respect that
+     * attenuation rather than overriding it with horizon calculations.
+     *
      * @param world World access
      * @param worldX World X coordinate
-     * @param worldY World Y coordinate  
+     * @param worldY World Y coordinate
      * @param worldZ World Z coordinate
      * @param existingVisibility The simple column-based visibility already computed
      * @return VisibilityResult with visibility and horizonWeight
@@ -247,28 +251,32 @@ public class HeightfieldVisibility {
     public static VisibilityResult computeWithHint(WorldAccess world,
                                                     int worldX, int worldY, int worldZ,
                                                     float existingVisibility) {
+        // FAST PATH: Skip expensive horizon ray tracing
+        // Just use the column-based visibility that's already computed
+        // This removes ~512 block lookups per vertex (massive speedup)
+
         if (worldY >= WorldConstants.WORLD_HEIGHT - 1) {
             return VisibilityResult.FULL;
         }
 
-        if (existingVisibility > 0.5f) {
-            // Zenith is clear (column visibility says so)
-            // Quick horizon check for horizon weight
-            float horizonVis = computeHorizonVisibilityFast(world, worldX, worldY, worldZ);
-            float totalVis = 0.6f + horizonVis * 0.4f;
-            float horizonWeight = 0.3f + (1.0f - horizonVis) * 0.2f;
-            return new VisibilityResult(totalVis, horizonWeight);
+        // Check if we're underwater
+        int blockAbove = world.getBlock(worldX, worldY + 1, worldZ);
+        if (Blocks.isWater(blockAbove)) {
+            return new VisibilityResult(existingVisibility, 0.5f);
         }
-        
-        // Zenith blocked - check horizon
-        float horizonVis = computeHorizonVisibilityFast(world, worldX, worldY, worldZ);
-        
-        if (horizonVis <= 0.01f) {
+
+        // Simple visibility based on column check only
+        // No horizon tracing - much faster
+        if (existingVisibility > 0.5f) {
+            // Can see sky - use full visibility with balanced horizon weight
+            return new VisibilityResult(existingVisibility, 0.3f);
+        } else if (existingVisibility > 0.01f) {
+            // Partial visibility (under translucent blocks like leaves)
+            return new VisibilityResult(existingVisibility, 0.5f);
+        } else {
+            // No sky visibility - underground/cave
             return VisibilityResult.NONE;
         }
-        
-        // Under overhang
-        return new VisibilityResult(horizonVis * 0.4f, 1.0f);
     }
 
     /**

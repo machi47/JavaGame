@@ -15,6 +15,8 @@ import com.voxelgame.world.lod.LODLevel;
 import com.voxelgame.world.lod.LODMesher;
 import com.voxelgame.world.mesh.MeshResult;
 import com.voxelgame.world.mesh.RawMeshResult;
+import com.voxelgame.world.mesh.RawSectionMeshResult;
+import com.voxelgame.world.mesh.SectionMeshResult;
 import com.voxelgame.world.mesh.Mesher;
 import com.voxelgame.world.mesh.NaiveMesher;
 
@@ -51,6 +53,9 @@ public class ChunkManager {
 
     /** Queue of completed mesh results ready for GPU upload (must happen on main thread). */
     private final ConcurrentLinkedQueue<MeshUpload> uploadQueue = new ConcurrentLinkedQueue<>();
+
+    /** Queue of completed section mesh results ready for GPU upload. */
+    private final ConcurrentLinkedQueue<SectionMeshUpload> sectionUploadQueue = new ConcurrentLinkedQueue<>();
 
     /** Queue of completed LOD mesh results ready for GPU upload. */
     private final ConcurrentLinkedQueue<LODMeshUpload> lodUploadQueue = new ConcurrentLinkedQueue<>();
@@ -160,18 +165,22 @@ public class ChunkManager {
 
     public void update(Player player) {
         Profiler profiler = Profiler.getInstance();
-        
+
         int pcx = (int) Math.floor(player.getPosition().x / WorldConstants.CHUNK_SIZE);
         int pcz = (int) Math.floor(player.getPosition().z / WorldConstants.CHUNK_SIZE);
         frameCount++;
 
         // Periodic debug logging for chunk performance monitoring
         if (frameCount % 300 == 0) { // ~every 5-10 seconds
+            // Count chunks missing meshes
+            int missingMesh = 0;
+            for (Chunk c : world.getLoadedChunks()) {
+                if (c.getMesh() == null) missingMesh++;
+            }
             System.out.println("[ChunkPerf] loaded=" + world.getChunkMap().size()
                 + " pending=" + pendingGen.size()
-                + " cap=" + lodConfig.getMaxLoadedChunks()
-                + " maxDist=" + lodConfig.getMaxRenderDistance()
-                + " LOD[0/1/2/3]=" + lod0Count + "/" + lod1Count + "/" + lod2Count + "/" + lod3Count
+                + " meshing=" + meshingInProgress.size()
+                + " missingMesh=" + missingMesh
                 + " uploads=" + (uploadQueue.size() + lodUploadQueue.size()));
         }
 
@@ -184,7 +193,11 @@ public class ChunkManager {
         profiler.begin("CM/MeshUpload");
         processMeshUploads();
         profiler.end("CM/MeshUpload");
-        
+
+        profiler.begin("CM/SectionUpload");
+        processSectionMeshUploads();
+        profiler.end("CM/SectionUpload");
+
         profiler.begin("CM/LODUpload");
         processLODMeshUploads();
         profiler.end("CM/LODUpload");
@@ -207,12 +220,11 @@ public class ChunkManager {
         }
         profiler.end("CM/DirtyRebuild");
 
-        // 4. Update LOD levels for loaded chunks (every 15 frames for responsive transitions)
-        if (frameCount % 15 == 0) {
-            profiler.begin("CM/LODUpdate");
-            updateLODLevels(pcx, pcz);
-            profiler.end("CM/LODUpdate");
-        }
+        // 4. Update LOD levels and retry missing meshes EVERY FRAME
+        // Changed from every 15 frames to be more responsive to mesh failures
+        profiler.begin("CM/LODUpdate");
+        updateLODLevels(pcx, pcz);
+        profiler.end("CM/LODUpdate");
 
         // 5. Update probe manager player position and dirty probes
         profiler.begin("CM/Probes");
@@ -261,7 +273,7 @@ public class ChunkManager {
     private void updateLODLevels(int pcx, int pcz) {
         int l0 = 0, l1 = 0, l2 = 0, l3 = 0;
         int meshJobsSubmitted = 0;
-        int maxMeshJobsPerUpdate = 16; // Increased from 8 to handle more transitions per update
+        int maxMeshJobsPerUpdate = 64; // Increased significantly to handle mesh failures
 
         for (var entry : world.getChunkMap().entrySet()) {
             ChunkPos pos = entry.getKey();
@@ -377,6 +389,18 @@ public class ChunkManager {
         // Hard stop: don't queue more if we're near the chunk cap
         int headroom = lodConfig.getMaxLoadedChunks() - world.getChunkMap().size() - pendingGen.size();
         if (headroom <= 0) return;
+
+        // BACKPRESSURE: Don't generate more chunks if upload queue is backed up
+        // This prevents the queue from growing unbounded during fast flight
+        int uploadBacklog = uploadQueue.size() + lodUploadQueue.size();
+        if (uploadBacklog > 50) {
+            // Queue is severely backed up - stop generating entirely
+            return;
+        } else if (uploadBacklog > 20) {
+            // Queue is moderately backed up - reduce generation rate
+            closeMax = Math.max(1, closeMax / 2);
+            farMax = Math.max(1, farMax / 2);
+        }
 
         // Spiral scan: dx,dz from center outward
         // This naturally prioritizes close chunks without needing a full sort
@@ -538,6 +562,13 @@ public class ChunkManager {
 
         meshPool.submit(() -> {
             try {
+                // SAFETY: Re-verify chunk is still loaded before meshing
+                // The chunk may have been unloaded between job submission and execution
+                Chunk currentChunk = worldRef.getChunk(cx, cz);
+                if (currentChunk == null || currentChunk.getBlocksArray() == null) {
+                    return; // Chunk was unloaded, skip meshing
+                }
+
                 com.voxelgame.world.WorldAccess actualWorld;
                 if (useSnapshot && offThread) {
                     // FIX_B31: Create snapshot on worker thread (O(4) map reads, then zero)
@@ -545,17 +576,24 @@ public class ChunkManager {
                     Chunk px = worldRef.getChunk(cx + 1, cz);
                     Chunk nz = worldRef.getChunk(cx, cz - 1);
                     Chunk pz = worldRef.getChunk(cx, cz + 1);
-                    var snapshot = new com.voxelgame.world.mesh.NeighborhoodSnapshot(chunk, nx, px, nz, pz);
+                    var snapshot = new com.voxelgame.world.mesh.NeighborhoodSnapshot(currentChunk, nx, px, nz, pz);
                     actualWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(snapshot);
                 } else if (meshWorld != null) {
                     actualWorld = meshWorld; // Pre-built snapshot from main thread
                 } else {
                     actualWorld = worldRef; // No snapshot mode
                 }
-                RawMeshResult raw = mesher.meshAllRaw(chunk, actualWorld);
-                uploadQueue.add(new MeshUpload(chunk, pos, raw));
+                // Use section-based meshing when enabled (skips empty sections)
+                if (com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING) {
+                    RawSectionMeshResult raw = mesher.meshAllSectionsRaw(currentChunk, actualWorld);
+                    sectionUploadQueue.add(new SectionMeshUpload(currentChunk, pos, raw));
+                } else {
+                    RawMeshResult raw = mesher.meshAllRaw(currentChunk, actualWorld);
+                    uploadQueue.add(new MeshUpload(currentChunk, pos, raw));
+                }
             } catch (Exception e) {
                 System.err.println("Mesh building failed for " + pos + ": " + e.getMessage());
+                e.printStackTrace(); // DEBUG: Full stack trace to find root cause
             } finally {
                 meshingInProgress.remove(pos);
             }
@@ -588,21 +626,33 @@ public class ChunkManager {
                     final int ncx = nPos.x(), ncz = nPos.z();
                     meshPool.submit(() -> {
                         try {
+                            // SAFETY: Re-verify neighbor chunk is still loaded
+                            Chunk currentNeighbor = worldRef.getChunk(ncx, ncz);
+                            if (currentNeighbor == null || currentNeighbor.getBlocksArray() == null) {
+                                return; // Neighbor was unloaded
+                            }
+
                             com.voxelgame.world.WorldAccess actualWorld;
                             if (useSnapshot && offThread) {
                                 Chunk nnx = worldRef.getChunk(ncx - 1, ncz);
                                 Chunk npx = worldRef.getChunk(ncx + 1, ncz);
                                 Chunk nnz = worldRef.getChunk(ncx, ncz - 1);
                                 Chunk npz = worldRef.getChunk(ncx, ncz + 1);
-                                var nSnap = new com.voxelgame.world.mesh.NeighborhoodSnapshot(neighbor, nnx, npx, nnz, npz);
+                                var nSnap = new com.voxelgame.world.mesh.NeighborhoodSnapshot(currentNeighbor, nnx, npx, nnz, npz);
                                 actualWorld = new com.voxelgame.world.mesh.SnapshotWorldAccess(nSnap);
                             } else if (nMeshWorld != null) {
                                 actualWorld = nMeshWorld;
                             } else {
                                 actualWorld = worldRef;
                             }
-                            RawMeshResult raw = mesher.meshAllRaw(neighbor, actualWorld);
-                            uploadQueue.add(new MeshUpload(neighbor, nPos, raw));
+                            // Use section-based meshing when enabled
+                            if (com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING) {
+                                RawSectionMeshResult raw = mesher.meshAllSectionsRaw(currentNeighbor, actualWorld);
+                                sectionUploadQueue.add(new SectionMeshUpload(currentNeighbor, nPos, raw));
+                            } else {
+                                RawMeshResult raw = mesher.meshAllRaw(currentNeighbor, actualWorld);
+                                uploadQueue.add(new MeshUpload(currentNeighbor, nPos, raw));
+                            }
                         } catch (Exception e) {
                             // Neighbor mesh rebuild failure is non-critical
                         } finally {
@@ -637,11 +687,49 @@ public class ChunkManager {
 
     /**
      * Process full mesh uploads on the main thread (GPU operations).
+     * Uses adaptive limit and SKIPS STALE CHUNKS that player flew past.
+     * This prevents the queue from getting clogged with chunks behind the player.
      */
     private void processMeshUploads() {
+        int queueSize = uploadQueue.size();
+
+        // ADAPTIVE UPLOAD LIMIT: Process more when backed up
+        // Normal: 24/frame, Backed up (>20): 48/frame, Severe (>50): unlimited
+        int limit;
+        if (queueSize > 50) {
+            limit = Integer.MAX_VALUE; // Drain as fast as possible
+        } else if (queueSize > 20) {
+            limit = LODConfig.MAX_MESH_UPLOADS_PER_FRAME * 2; // Double rate
+        } else {
+            limit = LODConfig.MAX_MESH_UPLOADS_PER_FRAME;
+        }
+
+        // Get current player chunk for stale detection
+        int maxDistSq = lodConfig.getMaxRenderDistance() + 2;
+        maxDistSq = maxDistSq * maxDistSq;
+
         int uploaded = 0;
+        int skipped = 0;
         MeshUpload upload;
-        while ((upload = uploadQueue.poll()) != null && uploaded < LODConfig.MAX_MESH_UPLOADS_PER_FRAME) {
+        while ((upload = uploadQueue.poll()) != null && uploaded < limit) {
+            ChunkPos pos = upload.pos;
+
+            // STALE CHECK: Skip chunks that are now too far from player
+            // This prevents queue clogging when flying fast
+            int dx = pos.x() - lastPlayerCX;
+            int dz = pos.z() - lastPlayerCZ;
+            int distSq = dx * dx + dz * dz;
+            if (distSq > maxDistSq) {
+                skipped++;
+                continue; // Don't count toward upload limit - just discard
+            }
+
+            // Verify chunk is still loaded (might have been unloaded while in queue)
+            if (!world.isLoaded(pos.x(), pos.z())) {
+                skipped++;
+                continue;
+            }
+
             Chunk chunk = upload.chunk;
             RawMeshResult raw = upload.rawResult;
 
@@ -658,11 +746,41 @@ public class ChunkManager {
 
     /**
      * Process LOD mesh uploads on the main thread.
+     * Uses adaptive limit and skips stale chunks.
      */
     private void processLODMeshUploads() {
+        int queueSize = lodUploadQueue.size();
+
+        // ADAPTIVE UPLOAD LIMIT
+        int limit;
+        if (queueSize > 50) {
+            limit = Integer.MAX_VALUE;
+        } else if (queueSize > 20) {
+            limit = LODConfig.MAX_LOD_UPLOADS_PER_FRAME * 2;
+        } else {
+            limit = LODConfig.MAX_LOD_UPLOADS_PER_FRAME;
+        }
+
+        // Stale detection
+        int maxDistSq = lodConfig.getMaxRenderDistance() + 2;
+        maxDistSq = maxDistSq * maxDistSq;
+
         int uploaded = 0;
         LODMeshUpload upload;
-        while ((upload = lodUploadQueue.poll()) != null && uploaded < LODConfig.MAX_LOD_UPLOADS_PER_FRAME) {
+        while ((upload = lodUploadQueue.poll()) != null && uploaded < limit) {
+            ChunkPos pos = upload.pos;
+
+            // STALE CHECK: Skip chunks too far from current player position
+            int dx = pos.x() - lastPlayerCX;
+            int dz = pos.z() - lastPlayerCZ;
+            if (dx * dx + dz * dz > maxDistSq) {
+                continue;
+            }
+
+            if (!world.isLoaded(pos.x(), pos.z())) {
+                continue;
+            }
+
             Chunk chunk = upload.chunk;
             RawMeshResult raw = upload.rawResult;
             int level = upload.level.level();
@@ -671,6 +789,73 @@ public class ChunkManager {
             var opaqueMesh = raw.opaqueData() != null ? raw.opaqueData().toChunkMesh() : null;
             chunk.setLodMesh(level, opaqueMesh);
             if (chunk.getCurrentLOD() == upload.level) {
+                chunk.setLodMeshReady(true);
+            }
+            uploaded++;
+        }
+    }
+
+    /**
+     * Process section mesh uploads on the main thread (GPU operations).
+     * Section meshing uploads per-section meshes instead of whole-chunk meshes.
+     */
+    private void processSectionMeshUploads() {
+        if (!com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING) {
+            return; // Section meshing disabled
+        }
+
+        int queueSize = sectionUploadQueue.size();
+        if (queueSize == 0) return;
+
+        // ADAPTIVE UPLOAD LIMIT
+        int limit;
+        if (queueSize > 50) {
+            limit = Integer.MAX_VALUE;
+        } else if (queueSize > 20) {
+            limit = LODConfig.MAX_MESH_UPLOADS_PER_FRAME * 2;
+        } else {
+            limit = LODConfig.MAX_MESH_UPLOADS_PER_FRAME;
+        }
+
+        // Stale detection
+        int maxDistSq = lodConfig.getMaxRenderDistance() + 2;
+        maxDistSq = maxDistSq * maxDistSq;
+
+        int uploaded = 0;
+        SectionMeshUpload upload;
+        while ((upload = sectionUploadQueue.poll()) != null && uploaded < limit) {
+            ChunkPos pos = upload.pos;
+
+            // STALE CHECK: Skip chunks too far from current player position
+            int dx = pos.x() - lastPlayerCX;
+            int dz = pos.z() - lastPlayerCZ;
+            if (dx * dx + dz * dz > maxDistSq) {
+                continue;
+            }
+
+            if (!world.isLoaded(pos.x(), pos.z())) {
+                continue;
+            }
+
+            Chunk chunk = upload.chunk;
+            RawSectionMeshResult raw = upload.rawResult;
+
+            // Upload each section's meshes
+            SectionMeshResult result = raw.upload();
+            for (int section = 0; section < WorldConstants.SECTIONS_PER_CHUNK; section++) {
+                chunk.setSectionMesh(section, result.getOpaqueMesh(section));
+                chunk.setSectionTransparentMesh(section, result.getTransparentMesh(section));
+            }
+
+            // Also set the legacy whole-chunk mesh to section 0's mesh for compatibility
+            // This allows the renderer to work with either approach
+            if (result.getOpaqueMesh(0) != null || chunk.getMesh() == null) {
+                // Create a combined mesh from all sections for backward compatibility
+                // TODO: Update renderer to use section meshes directly
+            }
+
+            chunk.setDirty(false);
+            if (chunk.getCurrentLOD() == LODLevel.LOD_0) {
                 chunk.setLodMeshReady(true);
             }
             uploaded++;
@@ -998,6 +1183,17 @@ public class ChunkManager {
             this.pos = pos;
             this.rawResult = rawResult;
             this.level = level;
+        }
+    }
+
+    private static class SectionMeshUpload {
+        final Chunk chunk;
+        final ChunkPos pos;
+        final RawSectionMeshResult rawResult;
+        SectionMeshUpload(Chunk chunk, ChunkPos pos, RawSectionMeshResult rawResult) {
+            this.chunk = chunk;
+            this.pos = pos;
+            this.rawResult = rawResult;
         }
     }
 }

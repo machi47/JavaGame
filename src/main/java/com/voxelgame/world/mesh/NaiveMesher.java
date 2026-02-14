@@ -9,31 +9,34 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Per-face mesher with ambient occlusion, sky visibility, horizon weight, and indirect lighting.
- * Vertex format: [x, y, z, u, v, skyVisibility, blockLightR, blockLightG, blockLightB, horizonWeight, indirectR, indirectG, indirectB] per vertex, 4 vertices per face.
+ * MINIMAL BASELINE MESHER - Optimized for performance.
  *
- * Phase 4 Unified Lighting Model:
- * - skyVisibility (0-1): passed to shader for dynamic sky RGB computation
- * - blockLightR/G/B (0-1): RGB block light from colored light sources (torch=orange, lava=red, etc.)
- * - horizonWeight (0-1): 0 = zenith visible (open sky), 1 = only horizon visible (under overhang)
- * - indirectR/G/B: one-bounce GI from irradiance probes
- * - AO is baked into skyVisibility and blockLight as a multiplier
+ * Vertex format: [x, y, z, u, v, light] = 6 floats per vertex
+ * - light: combined (skyVisibility * AO * faceLight) baked into single value
  *
- * The shader computes final lighting as:
- *   skyColor = mix(uSkyZenithColor, uSkyHorizonColor, vHorizonWeight)
- *   skyRGB = skyColor * vSkyVisibility * uSkyIntensity
- *   sunRGB = uSunColor * NdotL * uSunIntensity * vSkyVisibility
- *   blockRGB = vBlockLightRGB * flickerAmount  // Phase 4: direct RGB with flicker
- *   indirectRGB = vIndirectRGB * INDIRECT_STRENGTH
- *   totalRGB = skyRGB + sunRGB + blockRGB + indirectRGB
+ * Removed for performance:
+ * - RGB block light (use scalar)
+ * - Horizon weight
+ * - Indirect lighting probes
+ * - HeightfieldVisibility ray tracing
  *
- * Under overhangs: horizonWeight ≈ 1.0, so blocks get warm orange tint at sunset
- * Open sky: horizonWeight ≈ 0.3, so blocks get balanced zenith/horizon mix
- *
- * AO is computed by checking the 3 adjacent blocks at each vertex corner.
- * Quad diagonal is flipped when needed to avoid the "AO direction flip" artifact.
+ * Simple lighting model:
+ *   finalColor = textureColor * vLight
  */
 public class NaiveMesher implements Mesher {
+
+    // ============== BUFFER POOLING ==============
+    // ThreadLocal buffers to eliminate GC pressure from per-mesh allocations.
+    // Each mesh thread gets its own instance, no synchronization needed.
+    // Sized for worst-case chunk (rarely needs to grow).
+    private static final ThreadLocal<FloatArrayBuilder> OPAQUE_VERTS_POOL =
+        ThreadLocal.withInitial(() -> new FloatArrayBuilder(65536));
+    private static final ThreadLocal<IntArrayBuilder> OPAQUE_INDICES_POOL =
+        ThreadLocal.withInitial(() -> new IntArrayBuilder(32768));
+    private static final ThreadLocal<FloatArrayBuilder> TRANS_VERTS_POOL =
+        ThreadLocal.withInitial(() -> new FloatArrayBuilder(16384));
+    private static final ThreadLocal<IntArrayBuilder> TRANS_INDICES_POOL =
+        ThreadLocal.withInitial(() -> new IntArrayBuilder(8192));
 
     // Face indices: 0=top(+Y), 1=bottom(-Y), 2=north(-Z), 3=south(+Z), 4=east(+X), 5=west(-X)
     // Wider spread between faces gives stronger directional depth cues
@@ -281,12 +284,21 @@ public class NaiveMesher implements Mesher {
                         int nz = z + FACE_NORMALS[face][2];
 
                         int neighborId;
+                        boolean isCrossChunk = false;
                         if (nx >= 0 && nx < WorldConstants.CHUNK_SIZE &&
                             ny >= 0 && ny < WorldConstants.WORLD_HEIGHT &&
                             nz >= 0 && nz < WorldConstants.CHUNK_SIZE) {
                             neighborId = chunk.getBlock(nx, ny, nz);
                         } else {
+                            isCrossChunk = true;
                             neighborId = world.getBlock(cx + nx, ny, cz + nz);
+                        }
+
+                        // WATER SEAM FIX: If transparent block at chunk boundary sees air,
+                        // the neighbor chunk likely isn't loaded. Skip this face - it will
+                        // render correctly when neighbor loads and triggers remesh.
+                        if (isCrossChunk && isTransparent && neighborId == 0) {
+                            continue;
                         }
 
                         Block neighbor = Blocks.get(neighborId);
@@ -433,12 +445,16 @@ public class NaiveMesher implements Mesher {
      * Uses FloatArrayBuilder/IntArrayBuilder instead of ArrayList<Float>/ArrayList<Integer>.
      */
     private RawMeshResult meshAllRawPrimitive(Chunk chunk, WorldAccess world) {
-        FloatArrayBuilder opaqueVerts = new FloatArrayBuilder(65536);
-        IntArrayBuilder opaqueIndices = new IntArrayBuilder(32768);
+        // Get pooled buffers and clear for reuse (eliminates GC pressure)
+        FloatArrayBuilder opaqueVerts = OPAQUE_VERTS_POOL.get();
+        IntArrayBuilder opaqueIndices = OPAQUE_INDICES_POOL.get();
+        FloatArrayBuilder transVerts = TRANS_VERTS_POOL.get();
+        IntArrayBuilder transIndices = TRANS_INDICES_POOL.get();
+        opaqueVerts.clear();
+        opaqueIndices.clear();
+        transVerts.clear();
+        transIndices.clear();
         int opaqueVertexCount = 0;
-
-        FloatArrayBuilder transVerts = new FloatArrayBuilder(16384);
-        IntArrayBuilder transIndices = new IntArrayBuilder(8192);
         int transVertexCount = 0;
 
         ChunkPos pos = chunk.getPos();
@@ -504,12 +520,229 @@ public class NaiveMesher implements Mesher {
                         int nz = z + FACE_NORMALS[face][2];
 
                         int neighborId;
+                        boolean isCrossChunk = false;
                         if (nx >= 0 && nx < WorldConstants.CHUNK_SIZE &&
                             ny >= 0 && ny < WorldConstants.WORLD_HEIGHT &&
                             nz >= 0 && nz < WorldConstants.CHUNK_SIZE) {
                             neighborId = chunk.getBlock(nx, ny, nz);
                         } else {
+                            isCrossChunk = true;
                             neighborId = world.getBlock(cx + nx, ny, cz + nz);
+                        }
+
+                        // WATER SEAM FIX: If transparent block at chunk boundary sees air,
+                        // the neighbor chunk likely isn't loaded. Skip this face - it will
+                        // render correctly when neighbor loads and triggers remesh.
+                        if (isCrossChunk && isTransparent && neighborId == 0) {
+                            continue;
+                        }
+
+                        Block neighbor = Blocks.get(neighborId);
+                        if (neighbor.solid() && !neighbor.transparent()) continue;
+                        if (blockId == neighborId && neighbor.transparent()) continue;
+
+                        int texIdx = block.getTextureIndex(face);
+                        float[] uv = atlas.getUV(texIdx);
+                        float dirLight = FACE_LIGHT[face];
+
+                        // MINIMAL BASELINE: Simple AO + sky visibility, no RGB light, no indirect
+                        int[][][] aoOffsets = AO_OFFSETS[face];
+                        float[] vertLight = new float[4];
+                        int[] aoValues = new int[4];
+
+                        // Sample sky visibility once for the face (not per-vertex)
+                        int sampleX = cx + x + FACE_NORMALS[face][0];
+                        int sampleY = y + FACE_NORMALS[face][1];
+                        int sampleZ = cz + z + FACE_NORMALS[face][2];
+                        float skyVis = getSkyVisibilitySafe(world, sampleX, sampleY, sampleZ);
+
+                        for (int v = 0; v < 4; v++) {
+                            boolean side1 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][0]);
+                            boolean side2 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][1]);
+                            boolean corner = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][2]);
+
+                            int ao = (side1 && side2) ? 3 : ((side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0));
+                            aoValues[v] = ao;
+                            float aoFactor = AO_LEVELS[ao];
+
+                            // Simple combined light: faceLight * AO * skyVisibility
+                            // Add small ambient to prevent pure black in caves
+                            vertLight[v] = dirLight * aoFactor * Math.max(skyVis, 0.15f);
+                        }
+
+                        float[][] fv = FACE_VERTICES[face];
+                        int[][] fuv = FACE_UV[face];
+
+                        int baseVertex = isTransparent ? transVertexCount : opaqueVertexCount;
+                        for (int v = 0; v < 4; v++) {
+                            float u = (fuv[v][0] == 0) ? uv[0] : uv[2];
+                            float vCoord = (fuv[v][1] == 0) ? uv[1] : uv[3];
+
+                            float vx = wx + fv[v][0];
+                            float vy = wy + fv[v][1];
+                            float vz = wz + fv[v][2];
+
+                            if (isTransparent && Blocks.isWater(blockId) && fv[v][1] > 0.5f) {
+                                vy -= 0.12f;
+                            }
+
+                            // 6-float vertex: x, y, z, u, v, light
+                            addVertexMinimal(verts, vx, vy, vz, u, vCoord, vertLight[v]);
+                        }
+                        if (isTransparent) {
+                            transVertexCount += 4;
+                        } else {
+                            opaqueVertexCount += 4;
+                        }
+
+                        // AO-aware quad splitting
+                        if (aoValues[0] + aoValues[2] > aoValues[1] + aoValues[3]) {
+                            indices.add(baseVertex + 1, baseVertex + 2, baseVertex + 3);
+                            indices.add(baseVertex + 1, baseVertex + 3, baseVertex);
+                        } else {
+                            indices.add(baseVertex, baseVertex + 1, baseVertex + 2);
+                            indices.add(baseVertex, baseVertex + 2, baseVertex + 3);
+                        }
+                    }
+                }
+            }
+        }
+
+        MeshData opaqueData = new MeshData(opaqueVerts.toArray(), opaqueIndices.toArray());
+        MeshData transparentData = new MeshData(transVerts.toArray(), transIndices.toArray());
+        return new RawMeshResult(opaqueData, transparentData);
+    }
+
+    // =============== SECTION-BASED MESHING ===============
+
+    /**
+     * Mesh all sections of a chunk, skipping empty sections.
+     * This is the optimized path that avoids meshing air-only sections (sky)
+     * and fully-solid sections (deep underground with no exposed faces).
+     *
+     * @param chunk The chunk to mesh
+     * @param world World access for cross-chunk lookups
+     * @return RawSectionMeshResult with per-section mesh data
+     */
+    public RawSectionMeshResult meshAllSectionsRaw(Chunk chunk, WorldAccess world) {
+        RawSectionMeshResult result = new RawSectionMeshResult();
+
+        ChunkPos pos = chunk.getPos();
+        int cx = pos.x() * WorldConstants.CHUNK_SIZE;
+        int cz = pos.z() * WorldConstants.CHUNK_SIZE;
+
+        for (int section = 0; section < WorldConstants.SECTIONS_PER_CHUNK; section++) {
+            // Check section flag - skip empty sections
+            byte flag = chunk.getSectionFlag(section);
+            if (flag == Chunk.SECTION_EMPTY) {
+                continue; // No mesh needed for all-air section
+            }
+
+            // Mesh this section
+            MeshData[] sectionData = meshSectionPrimitive(chunk, world, cx, cz, section);
+            if (sectionData[0] != null || sectionData[1] != null) {
+                result.setSection(section, sectionData[0], sectionData[1]);
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * Mesh a single 16×16×16 section of a chunk.
+     *
+     * @return [opaqueData, transparentData] - either may be null if empty
+     */
+    private MeshData[] meshSectionPrimitive(Chunk chunk, WorldAccess world, int cx, int cz, int sectionIndex) {
+        // Get pooled buffers and clear for reuse
+        FloatArrayBuilder opaqueVerts = OPAQUE_VERTS_POOL.get();
+        IntArrayBuilder opaqueIndices = OPAQUE_INDICES_POOL.get();
+        FloatArrayBuilder transVerts = TRANS_VERTS_POOL.get();
+        IntArrayBuilder transIndices = TRANS_INDICES_POOL.get();
+        opaqueVerts.clear();
+        opaqueIndices.clear();
+        transVerts.clear();
+        transIndices.clear();
+        int opaqueVertexCount = 0;
+        int transVertexCount = 0;
+
+        int yStart = sectionIndex * WorldConstants.SECTION_HEIGHT;
+        int yEnd = yStart + WorldConstants.SECTION_HEIGHT;
+
+        for (int x = 0; x < WorldConstants.CHUNK_SIZE; x++) {
+            for (int y = yStart; y < yEnd; y++) {
+                for (int z = 0; z < WorldConstants.CHUNK_SIZE; z++) {
+                    int blockId = chunk.getBlock(x, y, z);
+                    if (blockId == 0) continue;
+
+                    Block block = Blocks.get(blockId);
+                    if (!block.solid() && !block.transparent()) continue;
+
+                    boolean isTransparent = block.transparent() && !block.solid();
+                    FloatArrayBuilder verts = isTransparent ? transVerts : opaqueVerts;
+                    IntArrayBuilder indices = isTransparent ? transIndices : opaqueIndices;
+
+                    float wx = cx + x;
+                    float wy = y;
+                    float wz = cz + z;
+
+                    // Special block handling (torches, flowers, etc.)
+                    if (blockId == Blocks.TORCH.id() || blockId == Blocks.REDSTONE_TORCH.id()) {
+                        opaqueVertexCount = meshTorchPrimitive(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                                wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    if (Blocks.isFlower(blockId)) {
+                        opaqueVertexCount = meshCrossPrimitive(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                                wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    if (Blocks.isWheatCrop(blockId)) {
+                        opaqueVertexCount = meshCrossPrimitive(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                                wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    if (Blocks.isRail(blockId)) {
+                        opaqueVertexCount = meshFlatQuadPrimitive(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                                   wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    if (blockId == Blocks.REDSTONE_WIRE.id()) {
+                        opaqueVertexCount = meshFlatQuadPrimitive(opaqueVerts, opaqueIndices, opaqueVertexCount,
+                                                                   wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    if (blockId == Blocks.REDSTONE_REPEATER.id()) {
+                        transVertexCount = meshFlatSlabPrimitive(transVerts, transIndices, transVertexCount,
+                                                                  wx, wy, wz, block, atlas);
+                        continue;
+                    }
+
+                    // Standard block face meshing
+                    for (int face = 0; face < 6; face++) {
+                        int nx = x + FACE_NORMALS[face][0];
+                        int ny = y + FACE_NORMALS[face][1];
+                        int nz = z + FACE_NORMALS[face][2];
+
+                        int neighborId;
+                        boolean isCrossChunk = false;
+                        if (nx >= 0 && nx < WorldConstants.CHUNK_SIZE &&
+                            ny >= 0 && ny < WorldConstants.WORLD_HEIGHT &&
+                            nz >= 0 && nz < WorldConstants.CHUNK_SIZE) {
+                            neighborId = chunk.getBlock(nx, ny, nz);
+                        } else {
+                            isCrossChunk = true;
+                            neighborId = world.getBlock(cx + nx, ny, cz + nz);
+                        }
+
+                        // WATER SEAM FIX: Skip faces toward unloaded chunks
+                        if (isCrossChunk && isTransparent && neighborId == 0) {
+                            continue;
                         }
 
                         Block neighbor = Blocks.get(neighborId);
@@ -525,7 +758,7 @@ public class NaiveMesher implements Mesher {
                         float[][] vertBlockLightRGB = new float[4][3];
                         int[] aoValues = new int[4];
                         float[] vertHorizonWeight = new float[4];
-                        
+
                         for (int v = 0; v < 4; v++) {
                             boolean side1 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][0]);
                             boolean side2 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][1]);
@@ -540,18 +773,18 @@ public class NaiveMesher implements Mesher {
                             aoValues[v] = ao;
 
                             float aoFactor = AO_LEVELS[ao];
-                            
+
                             int sampleX = cx + x + FACE_NORMALS[face][0];
                             int sampleY = y + FACE_NORMALS[face][1];
                             int sampleZ = cz + z + FACE_NORMALS[face][2];
-                            
+
                             float existingVis = getSkyVisibilitySafe(world, sampleX, sampleY, sampleZ);
-                            HeightfieldVisibility.VisibilityResult visResult = 
+                            HeightfieldVisibility.VisibilityResult visResult =
                                 HeightfieldVisibility.computeWithHint(world, sampleX, sampleY, sampleZ, existingVis);
-                            
+
                             float skyVis = visResult.visibility;
                             vertHorizonWeight[v] = visResult.horizonWeight;
-                            
+
                             float[] blockLightRGB = sampleVertexBlockLightRGB(world, cx + x, y, cz + z,
                                                                                face, aoOffsets[v]);
 
@@ -583,7 +816,7 @@ public class NaiveMesher implements Mesher {
                             }
 
                             addVertexPrimitive(verts, vx, vy, vz,
-                                              u, vCoord, vertSkyLight[v], 
+                                              u, vCoord, vertSkyLight[v],
                                               vertBlockLightRGB[v][0], vertBlockLightRGB[v][1], vertBlockLightRGB[v][2],
                                               vertHorizonWeight[v],
                                               indirect[0], indirect[1], indirect[2]);
@@ -606,13 +839,27 @@ public class NaiveMesher implements Mesher {
             }
         }
 
-        MeshData opaqueData = new MeshData(opaqueVerts.toArray(), opaqueIndices.toArray());
-        MeshData transparentData = new MeshData(transVerts.toArray(), transIndices.toArray());
-        return new RawMeshResult(opaqueData, transparentData);
+        MeshData opaqueData = opaqueVerts.size() > 0 ? new MeshData(opaqueVerts.toArray(), opaqueIndices.toArray()) : null;
+        MeshData transparentData = transVerts.size() > 0 ? new MeshData(transVerts.toArray(), transIndices.toArray()) : null;
+        return new MeshData[] { opaqueData, transparentData };
     }
-    
+
+    /**
+     * MINIMAL 6-float vertex: x, y, z, u, v, light
+     */
+    private void addVertexMinimal(FloatArrayBuilder verts, float x, float y, float z,
+                                   float u, float v, float light) {
+        verts.add(x);
+        verts.add(y);
+        verts.add(z);
+        verts.add(u);
+        verts.add(v);
+        verts.add(light);
+    }
+
+    // Legacy 13-float vertex (kept for compatibility but not used in minimal mode)
     private void addVertexPrimitive(FloatArrayBuilder verts, float x, float y, float z,
-                                    float u, float v, float skyVisibility, 
+                                    float u, float v, float skyVisibility,
                                     float blockLightR, float blockLightG, float blockLightB,
                                     float horizonWeight,
                                     float indirectR, float indirectG, float indirectB) {
@@ -638,73 +885,66 @@ public class NaiveMesher implements Mesher {
     private int meshTorchPrimitive(FloatArrayBuilder verts, IntArrayBuilder indices, int vertexCount,
                                     float wx, float wy, float wz, Block block, TextureAtlas atlas) {
         float[] uv = atlas.getUV(block.getTextureIndex(0));
-        float skyL = 1.0f;
-        float hrzW = 0.3f;
-        float[] torchColor = LightEmitters.getLightColorRGB(block.id());
-        float blkR = torchColor != null ? torchColor[0] : 1.0f;
-        float blkG = torchColor != null ? torchColor[1] : 0.8f;
-        float blkB = torchColor != null ? torchColor[2] : 0.5f;
-        
+        float light = 1.0f;  // Torches are self-lit
+
         float pad = 6.0f / 16.0f;
         float x0 = wx + pad, x1 = wx + 1.0f - pad;
         float z0 = wz + pad, z1 = wz + 1.0f - pad;
         float y0 = wy, y1 = wy + 10.0f / 16.0f;
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
-        
+
         int base = vertexCount;
         // Top (+Y)
-        addVertexPrimitive(verts, x0, y1, z0, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y1, z1, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y1, z1, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y1, z0, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x0, y1, z0, u0, v0, light);
+        addVertexMinimal(verts, x0, y1, z1, u0, v1, light);
+        addVertexMinimal(verts, x1, y1, z1, u1, v1, light);
+        addVertexMinimal(verts, x1, y1, z0, u1, v0, light);
         addQuadIndicesPrimitive(indices, base); base += 4;
         // Bottom (-Y)
-        addVertexPrimitive(verts, x0, y0, z1, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y0, z0, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z0, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z1, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x0, y0, z1, u0, v0, light * 0.45f);
+        addVertexMinimal(verts, x0, y0, z0, u0, v1, light * 0.45f);
+        addVertexMinimal(verts, x1, y0, z0, u1, v1, light * 0.45f);
+        addVertexMinimal(verts, x1, y0, z1, u1, v0, light * 0.45f);
         addQuadIndicesPrimitive(indices, base); base += 4;
         // North (-Z)
-        addVertexPrimitive(verts, x1, y1, z0, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z0, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y0, z0, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y1, z0, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x1, y1, z0, u0, v0, light * 0.7f);
+        addVertexMinimal(verts, x1, y0, z0, u0, v1, light * 0.7f);
+        addVertexMinimal(verts, x0, y0, z0, u1, v1, light * 0.7f);
+        addVertexMinimal(verts, x0, y1, z0, u1, v0, light * 0.7f);
         addQuadIndicesPrimitive(indices, base); base += 4;
         // South (+Z)
-        addVertexPrimitive(verts, x0, y1, z1, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y0, z1, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z1, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y1, z1, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x0, y1, z1, u0, v0, light * 0.7f);
+        addVertexMinimal(verts, x0, y0, z1, u0, v1, light * 0.7f);
+        addVertexMinimal(verts, x1, y0, z1, u1, v1, light * 0.7f);
+        addVertexMinimal(verts, x1, y1, z1, u1, v0, light * 0.7f);
         addQuadIndicesPrimitive(indices, base); base += 4;
         // East (+X)
-        addVertexPrimitive(verts, x1, y1, z1, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z1, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y0, z0, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x1, y1, z0, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x1, y1, z1, u0, v0, light * 0.8f);
+        addVertexMinimal(verts, x1, y0, z1, u0, v1, light * 0.8f);
+        addVertexMinimal(verts, x1, y0, z0, u1, v1, light * 0.8f);
+        addVertexMinimal(verts, x1, y1, z0, u1, v0, light * 0.8f);
         addQuadIndicesPrimitive(indices, base); base += 4;
         // West (-X)
-        addVertexPrimitive(verts, x0, y1, z0, u0, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y0, z0, u0, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y0, z1, u1, v1, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
-        addVertexPrimitive(verts, x0, y1, z1, u1, v0, skyL, blkR, blkG, blkB, hrzW, 0, 0, 0);
+        addVertexMinimal(verts, x0, y1, z0, u0, v0, light * 0.6f);
+        addVertexMinimal(verts, x0, y0, z0, u0, v1, light * 0.6f);
+        addVertexMinimal(verts, x0, y0, z1, u1, v1, light * 0.6f);
+        addVertexMinimal(verts, x0, y1, z1, u1, v0, light * 0.6f);
         addQuadIndicesPrimitive(indices, base);
-        
+
         return vertexCount + 24;
     }
     
     private int meshCrossPrimitive(FloatArrayBuilder verts, IntArrayBuilder indices, int vertexCount,
                                     float wx, float wy, float wz, Block block, TextureAtlas atlas) {
         float[] uv = atlas.getUV(block.getTextureIndex(0));
-        float skyL = 1.0f;
-        float hrzW = 0.5f;
-        float[] blkL = {0, 0, 0};
-        
+        float light = 0.85f;  // Slightly dimmer for foliage
+
         float[][] crossVerts = {
             {0, 0, 0}, {1, 0, 1}, {1, 1, 1}, {0, 1, 0},
             {1, 0, 0}, {0, 0, 1}, {0, 1, 1}, {1, 1, 0}
         };
         int[][] crossUV = {{0, 1}, {1, 1}, {1, 0}, {0, 0}};
-        
+
         for (int q = 0; q < 2; q++) {
             for (int v = 0; v < 4; v++) {
                 int idx = q * 4 + v;
@@ -713,7 +953,7 @@ public class NaiveMesher implements Mesher {
                 float vz = wz + crossVerts[idx][2];
                 float u = (crossUV[v][0] == 0) ? uv[0] : uv[2];
                 float vCoord = (crossUV[v][1] == 0) ? uv[1] : uv[3];
-                addVertexPrimitive(verts, vx, vy, vz, u, vCoord, skyL, blkL[0], blkL[1], blkL[2], hrzW, 0, 0, 0);
+                addVertexMinimal(verts, vx, vy, vz, u, vCoord, light);
             }
             addQuadIndicesPrimitive(indices, vertexCount);
             vertexCount += 4;
@@ -724,21 +964,19 @@ public class NaiveMesher implements Mesher {
     private int meshFlatQuadPrimitive(FloatArrayBuilder verts, IntArrayBuilder indices, int vertexCount,
                                        float wx, float wy, float wz, Block block, TextureAtlas atlas) {
         float[] uv = atlas.getUV(block.getTextureIndex(0));
-        float skyL = 1.0f;
-        float hrzW = 0.5f;
-        float[] blkL = {0, 0, 0};
+        float light = 0.85f;
         float yOffset = 0.01f;
-        
+
         float[][] quadVerts = {{0, yOffset, 0}, {1, yOffset, 0}, {1, yOffset, 1}, {0, yOffset, 1}};
         int[][] quadUV = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-        
+
         for (int v = 0; v < 4; v++) {
             float vx = wx + quadVerts[v][0];
             float vy = wy + quadVerts[v][1];
             float vz = wz + quadVerts[v][2];
             float u = (quadUV[v][0] == 0) ? uv[0] : uv[2];
             float vCoord = (quadUV[v][1] == 0) ? uv[1] : uv[3];
-            addVertexPrimitive(verts, vx, vy, vz, u, vCoord, skyL, blkL[0], blkL[1], blkL[2], hrzW, 0, 0, 0);
+            addVertexMinimal(verts, vx, vy, vz, u, vCoord, light);
         }
         addQuadIndicesPrimitive(indices, vertexCount);
         return vertexCount + 4;
@@ -747,21 +985,19 @@ public class NaiveMesher implements Mesher {
     private int meshFlatSlabPrimitive(FloatArrayBuilder verts, IntArrayBuilder indices, int vertexCount,
                                        float wx, float wy, float wz, Block block, TextureAtlas atlas) {
         float[] uv = atlas.getUV(block.getTextureIndex(0));
-        float skyL = 1.0f;
-        float hrzW = 0.5f;
-        float[] blkL = {0, 0, 0};
+        float light = 0.8f;
         float slabHeight = 2f / 16f;
-        
+
         float[][] topVerts = {{0, slabHeight, 0}, {1, slabHeight, 0}, {1, slabHeight, 1}, {0, slabHeight, 1}};
         int[][] quadUV = {{0, 0}, {1, 0}, {1, 1}, {0, 1}};
-        
+
         for (int v = 0; v < 4; v++) {
             float vx = wx + topVerts[v][0];
             float vy = wy + topVerts[v][1];
             float vz = wz + topVerts[v][2];
             float u = (quadUV[v][0] == 0) ? uv[0] : uv[2];
             float vCoord = (quadUV[v][1] == 0) ? uv[1] : uv[3];
-            addVertexPrimitive(verts, vx, vy, vz, u, vCoord, skyL, blkL[0], blkL[1], blkL[2], hrzW, 0, 0, 0);
+            addVertexMinimal(verts, vx, vy, vz, u, vCoord, light);
         }
         addQuadIndicesPrimitive(indices, vertexCount);
         return vertexCount + 4;

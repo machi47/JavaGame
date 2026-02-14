@@ -420,12 +420,27 @@ public class Renderer {
             }
 
             // Use LOD-appropriate mesh
-            ChunkMesh mesh = chunk.getRenderMesh();
-            if (mesh != null && !mesh.isEmpty()) {
-                mesh.draw();
+            // Section meshing: render per-section meshes if available
+            if (com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING && chunk.hasAnySectionMesh()) {
+                // Render each section that has a mesh
+                for (int section = 0; section < com.voxelgame.world.WorldConstants.SECTIONS_PER_CHUNK; section++) {
+                    ChunkMesh sectionMesh = chunk.getSectionMesh(section);
+                    if (sectionMesh != null && !sectionMesh.isEmpty()) {
+                        sectionMesh.draw();
+                        drawCalls++;
+                        triangleCount += sectionMesh.getIndexCount() / 3;
+                    }
+                }
                 renderedChunks++;
-                drawCalls++;
-                triangleCount += mesh.getIndexCount() / 3;
+            } else {
+                // Fallback: use whole-chunk mesh
+                ChunkMesh mesh = chunk.getRenderMesh();
+                if (mesh != null && !mesh.isEmpty()) {
+                    mesh.draw();
+                    renderedChunks++;
+                    drawCalls++;
+                    triangleCount += mesh.getIndexCount() / 3;
+                }
             }
         }
 
@@ -449,9 +464,19 @@ public class Renderer {
             ChunkPos pos = entry.getKey();
             if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
 
-            ChunkMesh transMesh = chunk.getRenderTransparentMesh();
-            if (transMesh != null && !transMesh.isEmpty()) {
-                transMesh.draw();
+            // Section meshing: render per-section transparent meshes
+            if (com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING && chunk.hasAnySectionMesh()) {
+                for (int section = 0; section < com.voxelgame.world.WorldConstants.SECTIONS_PER_CHUNK; section++) {
+                    ChunkMesh sectionTransMesh = chunk.getSectionTransparentMesh(section);
+                    if (sectionTransMesh != null && !sectionTransMesh.isEmpty()) {
+                        sectionTransMesh.draw();
+                    }
+                }
+            } else {
+                ChunkMesh transMesh = chunk.getRenderTransparentMesh();
+                if (transMesh != null && !transMesh.isEmpty()) {
+                    transMesh.draw();
+                }
             }
         }
 
@@ -578,9 +603,18 @@ public class Renderer {
                 if (cdx * cdx + cdz * cdz > shadowDistSq) continue;
                 
                 // Render opaque mesh for shadows
-                ChunkMesh mesh = chunk.getRenderMesh();
-                if (mesh != null && !mesh.isEmpty()) {
-                    mesh.renderDepthOnly();
+                if (com.voxelgame.bench.BenchFixes.FIX_SECTION_MESHING && chunk.hasAnySectionMesh()) {
+                    for (int section = 0; section < com.voxelgame.world.WorldConstants.SECTIONS_PER_CHUNK; section++) {
+                        ChunkMesh sectionMesh = chunk.getSectionMesh(section);
+                        if (sectionMesh != null && !sectionMesh.isEmpty()) {
+                            sectionMesh.renderDepthOnly();
+                        }
+                    }
+                } else {
+                    ChunkMesh mesh = chunk.getRenderMesh();
+                    if (mesh != null && !mesh.isEmpty()) {
+                        mesh.renderDepthOnly();
+                    }
                 }
             }
             
