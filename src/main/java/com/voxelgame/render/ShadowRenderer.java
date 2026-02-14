@@ -40,76 +40,119 @@ public class ShadowRenderer {
     /** Shadow shader for depth-only rendering. */
     private Shader shadowShader;
     
-    /** Whether shadow system is initialized. */
+    /** Whether shadow system is initialized (shader loaded). */
     private boolean initialized = false;
-    
+
+    /** Whether shadow textures are allocated (lazy allocation). */
+    private boolean texturesAllocated = false;
+
     /** Whether shadows are enabled (disabled for performance testing). */
     private boolean shadowsEnabled = false;
 
+    /** Frames since shadows were last used (for lazy deallocation). */
+    private int framesSinceUsed = 0;
+
+    /** Deallocate textures after this many frames of disuse. */
+    private static final int DEALLOC_FRAMES = 300; // ~5 seconds at 60fps
+
     /**
-     * Initialize shadow FBOs, textures, and shader.
+     * Initialize shadow shader only (lazy texture allocation).
+     * Textures are allocated on first use to save ~50MB VRAM when shadows disabled.
      */
     public void init() {
         // Create shadow shader
         shadowShader = new Shader("shaders/shadow.vert", "shaders/shadow.frag");
-        
+
         // Initialize matrices
         for (int i = 0; i < NUM_CASCADES; i++) {
             lightViewProj[i] = new Matrix4f();
         }
-        
+
+        initialized = true;
+        System.out.println("ShadowRenderer initialized (lazy texture allocation enabled)");
+    }
+
+    /**
+     * Allocate shadow map textures and FBOs.
+     * Called lazily when shadows are first enabled.
+     */
+    private void allocateTextures() {
+        if (texturesAllocated) return;
+
         // Create FBOs and depth textures for each cascade
         for (int i = 0; i < NUM_CASCADES; i++) {
             shadowFBOs[i] = glGenFramebuffers();
             shadowTextures[i] = glGenTextures();
-            
+
             // Configure depth texture
             glBindTexture(GL_TEXTURE_2D, shadowTextures[i]);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
                     SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0,
                     GL_DEPTH_COMPONENT, GL_FLOAT, (java.nio.FloatBuffer) null);
-            
+
             // Shadow map filtering - use linear for PCF
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            
+
             // Clamp to border (samples outside map return 1.0 = not in shadow)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
             float[] borderColor = {1.0f, 1.0f, 1.0f, 1.0f};
             glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-            
+
             // Enable hardware shadow comparison (for sampler2DShadow)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
-            
+
             // Attach to FBO
             glBindFramebuffer(GL_FRAMEBUFFER, shadowFBOs[i]);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                     GL_TEXTURE_2D, shadowTextures[i], 0);
-            
+
             // No color attachment - depth only
             glDrawBuffer(GL_NONE);
             glReadBuffer(GL_NONE);
-            
+
             // Verify FBO is complete
             int status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if (status != GL_FRAMEBUFFER_COMPLETE) {
                 throw new RuntimeException("Shadow FBO " + i + " incomplete: " + status);
             }
         }
-        
+
         // Restore default framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glBindTexture(GL_TEXTURE_2D, 0);
-        
-        initialized = true;
-        System.out.println("ShadowRenderer initialized: " + NUM_CASCADES + " cascades @ " + SHADOW_MAP_SIZE + "x" + SHADOW_MAP_SIZE);
+
+        texturesAllocated = true;
+        System.out.println("ShadowRenderer textures allocated: " + NUM_CASCADES + " cascades @ " + SHADOW_MAP_SIZE + "x" + SHADOW_MAP_SIZE);
+    }
+
+    /**
+     * Deallocate shadow textures to free VRAM.
+     * Called when shadows have been disabled for a while (e.g., at night).
+     */
+    private void deallocateTextures() {
+        if (!texturesAllocated) return;
+
+        for (int i = 0; i < NUM_CASCADES; i++) {
+            if (shadowFBOs[i] != 0) {
+                glDeleteFramebuffers(shadowFBOs[i]);
+                shadowFBOs[i] = 0;
+            }
+            if (shadowTextures[i] != 0) {
+                glDeleteTextures(shadowTextures[i]);
+                shadowTextures[i] = 0;
+            }
+        }
+
+        texturesAllocated = false;
+        System.out.println("ShadowRenderer textures deallocated (night mode - saving VRAM)");
     }
 
     /**
      * Update cascade matrices based on camera position and sun direction.
-     * 
+     *
      * @param camera The player camera
      * @param sunDirection Direction TO the sun (normalized)
      * @param fov Camera field of view in degrees
@@ -117,15 +160,27 @@ public class ShadowRenderer {
      */
     public void updateCascades(Camera camera, float[] sunDirection, float fov, float aspect) {
         if (!initialized) return;
-        
+
         // Convert sun direction to Vector3f
         Vector3f sunDir = new Vector3f(sunDirection[0], sunDirection[1], sunDirection[2]);
-        
+
         // If sun is below horizon, disable shadows
         if (sunDir.y < 0.05f) {
             shadowsEnabled = false;
+            framesSinceUsed++;
+
+            // Lazy deallocation: free textures after prolonged disuse (night time)
+            if (texturesAllocated && framesSinceUsed > DEALLOC_FRAMES) {
+                deallocateTextures();
+            }
             return;
         }
+
+        // Shadows are needed - allocate textures if not already done
+        if (!texturesAllocated) {
+            allocateTextures();
+        }
+        framesSinceUsed = 0;
         shadowsEnabled = true;
         
         // Camera frustum parameters
@@ -261,7 +316,7 @@ public class ShadowRenderer {
      * Call this, then render chunks, then call endShadowPass().
      */
     public void beginShadowPass(int cascade) {
-        if (!initialized || !shadowsEnabled) return;
+        if (!initialized || !shadowsEnabled || !texturesAllocated) return;
         if (cascade < 0 || cascade >= NUM_CASCADES) return;
         
         glBindFramebuffer(GL_FRAMEBUFFER, shadowFBOs[cascade]);
@@ -334,11 +389,18 @@ public class ShadowRenderer {
     }
 
     /**
-     * Check if shadows are currently enabled.
+     * Check if shadows are currently enabled and textures are ready.
      * Shadows are disabled at night when sun is below horizon.
      */
     public boolean isShadowsEnabled() {
-        return initialized && shadowsEnabled;
+        return initialized && shadowsEnabled && texturesAllocated;
+    }
+
+    /**
+     * Check if shadow textures are currently allocated.
+     */
+    public boolean isTexturesAllocated() {
+        return texturesAllocated;
     }
 
     /**
@@ -353,20 +415,15 @@ public class ShadowRenderer {
      */
     public void cleanup() {
         if (!initialized) return;
-        
-        for (int i = 0; i < NUM_CASCADES; i++) {
-            if (shadowFBOs[i] != 0) {
-                glDeleteFramebuffers(shadowFBOs[i]);
-            }
-            if (shadowTextures[i] != 0) {
-                glDeleteTextures(shadowTextures[i]);
-            }
-        }
-        
+
+        // Deallocate textures if allocated
+        deallocateTextures();
+
         if (shadowShader != null) {
             shadowShader.cleanup();
+            shadowShader = null;
         }
-        
+
         initialized = false;
     }
 }

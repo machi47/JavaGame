@@ -906,6 +906,9 @@ public class ChunkManager {
     /**
      * Enforce hard chunk cap by unloading the farthest chunks when over limit.
      * This prevents unbounded memory growth regardless of render distance settings.
+     *
+     * OPTIMIZATION: Uses a min-heap of size K instead of sorting all chunks.
+     * Complexity: O(n log k) where k = chunks to remove, vs O(n log n) for full sort.
      */
     private void enforceChunkCap(int pcx, int pcz) {
         int maxChunks = lodConfig.getMaxLoadedChunks();
@@ -913,21 +916,34 @@ public class ChunkManager {
 
         if (currentCount <= maxChunks) return;
 
-        // Collect all chunks with their distances
-        List<Map.Entry<ChunkPos, Integer>> byDistance = new ArrayList<>();
+        int toRemove = currentCount - maxChunks;
+
+        // Use a min-heap of size K to find the K farthest chunks
+        // The heap stores entries sorted by distance (min at top)
+        // When heap is full, we only add if distance > min, then remove min
+        // Result: heap contains the K largest distances (farthest chunks)
+        PriorityQueue<Map.Entry<ChunkPos, Integer>> heap = new PriorityQueue<>(
+            toRemove + 1,
+            Comparator.comparingInt(Map.Entry::getValue) // min-heap by distance
+        );
+
         for (ChunkPos pos : world.getChunkMap().keySet()) {
             int dx = pos.x() - pcx;
             int dz = pos.z() - pcz;
-            byDistance.add(Map.entry(pos, dx * dx + dz * dz));
+            int distSq = dx * dx + dz * dz;
+
+            if (heap.size() < toRemove) {
+                heap.add(Map.entry(pos, distSq));
+            } else if (distSq > heap.peek().getValue()) {
+                // This chunk is farther than the closest in our heap
+                heap.poll(); // Remove closest
+                heap.add(Map.entry(pos, distSq));
+            }
         }
 
-        // Sort by distance descending (farthest first)
-        byDistance.sort((a, b) -> Integer.compare(b.getValue(), a.getValue()));
-
-        // Remove chunks until we're under the cap
-        int toRemove = currentCount - maxChunks;
-        for (int i = 0; i < toRemove && i < byDistance.size(); i++) {
-            ChunkPos pos = byDistance.get(i).getKey();
+        // Remove the farthest chunks (everything in the heap)
+        while (!heap.isEmpty()) {
+            ChunkPos pos = heap.poll().getKey();
 
             // Save modified chunks before unloading
             if (saveManager != null) {

@@ -11,6 +11,9 @@ import com.voxelgame.world.mesh.ChunkMesh;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import static org.lwjgl.opengl.GL33.*;
 
 /**
@@ -47,6 +50,15 @@ public class Renderer {
     
     /** Phase 5: Shadow renderer for cascaded shadow maps. */
     private ShadowRenderer shadowRenderer;
+
+    /** Visibility graph for connectivity-based culling. */
+    private VisibilityGraph visibilityGraph;
+
+    /** HZB occlusion culler for GPU-based fine culling. */
+    private HZBOcclusionCuller hzbCuller;
+
+    /** Whether visibility culling is enabled (can be toggled for debugging). */
+    private boolean visibilityCullingEnabled = true;
 
     /** Sky system for zenith/horizon colors and intensity curves. */
     private final SkySystem skySystem = new SkySystem();
@@ -107,20 +119,36 @@ public class Renderer {
     private int triangleCount;
     private long bytesUploaded;
     private int culledChunks;
+    private int connectivityCulled;
+    private int hzbCulled;
 
     public Renderer(World world) {
         this.world = world;
     }
 
     public void init() {
+        init(1920, 1080); // Default size, will resize on first frame
+    }
+
+    public void init(int windowWidth, int windowHeight) {
         blockShader = new Shader("shaders/block.vert", "shaders/block.frag");
         atlas = new TextureAtlas();
         atlas.init();
         frustum = new Frustum();
-        
+
         // Phase 5: Initialize shadow renderer
         shadowRenderer = new ShadowRenderer();
         shadowRenderer.init();
+
+        // Initialize visibility graph for connectivity-based culling
+        visibilityGraph = new VisibilityGraph();
+        visibilityGraph.init(world);
+
+        // Initialize HZB occlusion culler (disabled by default until fully implemented)
+        hzbCuller = new HZBOcclusionCuller();
+        // HZB init deferred - requires shaders that may not exist yet
+        // hzbCuller.init(windowWidth, windowHeight);
+        hzbCuller.setEnabled(false); // Disabled until HZB shaders are verified
     }
 
     /** Set the LOD config for dynamic fog distances. */
@@ -392,9 +420,35 @@ public class Renderer {
 
         renderedChunks = 0;
         culledChunks = 0;
+        connectivityCulled = 0;
+        hzbCulled = 0;
         drawCalls = 0;
         triangleCount = 0;
         bytesUploaded = 0;
+
+        // ========================================================================
+        // VISIBILITY PIPELINE: Connectivity -> Frustum -> HZB -> Render
+        // ========================================================================
+
+        // Update visibility graph with player position
+        if (visibilityGraph != null && visibilityCullingEnabled) {
+            visibilityGraph.update(
+                camera.getPosition().x,
+                camera.getPosition().y,
+                camera.getPosition().z
+            );
+        }
+
+        // Get candidate chunks from visibility graph (or all chunks if disabled)
+        Set<ChunkPos> candidates;
+        if (visibilityGraph != null && visibilityCullingEnabled) {
+            candidates = visibilityGraph.getCandidateChunks();
+        } else {
+            candidates = world.getChunkMap().keySet();
+        }
+
+        // Track chunks that pass all culling for HZB temporal coherence
+        Set<ChunkPos> visibleThisFrame = new HashSet<>();
 
         // ---- Pass 1: Opaque geometry (all LOD levels) ----
         // Includes alpha-discard geometry (torches, flowers, rails) which need both-side rendering.
@@ -402,9 +456,12 @@ public class Renderer {
         blockShader.setFloat("uAlpha", 1.0f);
         glDisable(GL_CULL_FACE);
 
-        for (var entry : world.getChunkMap().entrySet()) {
-            ChunkPos pos = entry.getKey();
-            Chunk chunk = entry.getValue();
+        int camCXInt = (int) Math.floor(camera.getPosition().x / WorldConstants.CHUNK_SIZE);
+        int camCZInt = (int) Math.floor(camera.getPosition().z / WorldConstants.CHUNK_SIZE);
+
+        for (ChunkPos pos : candidates) {
+            Chunk chunk = world.getChunk(pos.x(), pos.z());
+            if (chunk == null) continue;
 
             // Distance cull — skip chunks beyond fog end (fully fogged, no point rendering)
             float cdx = pos.x() + 0.5f - camCX;
@@ -414,10 +471,22 @@ public class Renderer {
                 continue;
             }
 
+            // Frustum cull
             if (!frustum.isChunkVisible(pos.x(), pos.z())) {
                 culledChunks++;
                 continue;
             }
+
+            // HZB occlusion cull (for opaque geometry only)
+            // Note: HZB is currently disabled until shaders are verified
+            if (hzbCuller != null && hzbCuller.isEnabled()) {
+                if (!hzbCuller.testChunkVisibility(pos, projView, camCXInt, camCZInt)) {
+                    hzbCulled++;
+                    continue;
+                }
+            }
+
+            visibleThisFrame.add(pos);
 
             // Use LOD-appropriate mesh
             // Section meshing: render per-section meshes if available
@@ -444,10 +513,19 @@ public class Renderer {
             }
         }
 
+        // Count chunks culled by connectivity (not in candidate set)
+        connectivityCulled = world.getChunkMap().size() - candidates.size();
+
         // Re-enable cull face after opaque pass (was disabled for cross-billboard geometry)
         glEnable(GL_CULL_FACE);
 
+        // Update HZB temporal coherence with this frame's visible chunks
+        if (hzbCuller != null && hzbCuller.isEnabled()) {
+            hzbCuller.endFrame(visibleThisFrame);
+        }
+
         // ---- Pass 2: Transparent geometry (water only now) — LOD 0 only ----
+        // NOTE: Transparent chunks are NOT culled by HZB (could be visible through openings)
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);       // don't write to depth buffer
@@ -455,13 +533,15 @@ public class Renderer {
 
         blockShader.setFloat("uAlpha", WATER_ALPHA);
 
-        for (var entry : world.getChunkMap().entrySet()) {
-            Chunk chunk = entry.getValue();
+        // Use visibility candidates for transparent pass too (connectivity culling still applies)
+        for (ChunkPos pos : candidates) {
+            Chunk chunk = world.getChunk(pos.x(), pos.z());
+            if (chunk == null) continue;
 
             // Skip non-LOD0 chunks early — they never have transparent meshes
             if (chunk.getCurrentLOD() != com.voxelgame.world.lod.LODLevel.LOD_0) continue;
 
-            ChunkPos pos = entry.getKey();
+            // Frustum cull (but NOT HZB - transparent can be seen through gaps)
             if (!frustum.isChunkVisible(pos.x(), pos.z())) continue;
 
             // Section meshing: render per-section transparent meshes
@@ -496,7 +576,23 @@ public class Renderer {
     public int getTriangleCount() { return triangleCount; }
     public long getBytesUploaded() { return bytesUploaded; }
     public int getCulledChunks() { return culledChunks; }
-    
+    public int getConnectivityCulled() { return connectivityCulled; }
+    public int getHzbCulled() { return hzbCulled; }
+
+    /** Get visibility graph for debugging. */
+    public VisibilityGraph getVisibilityGraph() { return visibilityGraph; }
+
+    /** Get HZB culler for debugging. */
+    public HZBOcclusionCuller getHzbCuller() { return hzbCuller; }
+
+    /** Toggle visibility culling (F9). */
+    public void toggleVisibilityCulling() {
+        visibilityCullingEnabled = !visibilityCullingEnabled;
+        System.out.println("[Renderer] Visibility culling: " + (visibilityCullingEnabled ? "ON" : "OFF"));
+    }
+
+    public boolean isVisibilityCullingEnabled() { return visibilityCullingEnabled; }
+
     /** Get shadow renderer for debug visualization. */
     public ShadowRenderer getShadowRenderer() { return shadowRenderer; }
     
@@ -672,5 +768,21 @@ public class Renderer {
         if (blockShader != null) blockShader.cleanup();
         if (atlas != null) atlas.cleanup();
         if (shadowRenderer != null) shadowRenderer.cleanup();
+        if (visibilityGraph != null) visibilityGraph.clear();
+        if (hzbCuller != null) hzbCuller.cleanup();
+    }
+
+    /** Notify visibility graph of chunk changes. */
+    public void markChunkDirty(ChunkPos pos) {
+        if (visibilityGraph != null) {
+            visibilityGraph.markChunkDirty(pos);
+        }
+    }
+
+    /** Resize HZB buffers when window size changes. */
+    public void resize(int width, int height) {
+        if (hzbCuller != null) {
+            hzbCuller.resize(width, height);
+        }
     }
 }
