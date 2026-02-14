@@ -666,6 +666,7 @@ public class GameLoop {
         hud.setFont(bitmapFont);
         hud.setAtlas(renderer.getAtlas());
         debugOverlay = new DebugOverlay(bitmapFont);
+        debugOverlay.setRenderer(renderer);
         deathScreen = new DeathScreen(bitmapFont);
         deathScreen.init();
         blockHighlight = new BlockHighlight();

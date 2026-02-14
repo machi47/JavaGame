@@ -58,7 +58,7 @@ public class Renderer {
     private HZBOcclusionCuller hzbCuller;
 
     /** Whether visibility culling is enabled (can be toggled for debugging). */
-    private boolean visibilityCullingEnabled = true;
+    private boolean visibilityCullingEnabled = false; // Disabled by default until tuned
 
     /** Sky system for zenith/horizon colors and intensity curves. */
     private final SkySystem skySystem = new SkySystem();

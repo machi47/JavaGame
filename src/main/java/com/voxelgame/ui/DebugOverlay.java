@@ -1,6 +1,8 @@
 package com.voxelgame.ui;
 
 import com.voxelgame.core.Profiler;
+import com.voxelgame.render.Renderer;
+import com.voxelgame.render.VisibilityGraph;
 import com.voxelgame.sim.Inventory;
 import com.voxelgame.sim.Player;
 import com.voxelgame.world.World;
@@ -17,15 +19,16 @@ import static org.lwjgl.opengl.GL33.*;
  * Debug information overlay (F3 screen).
  * Shows FPS, position, chunk info, fly mode, facing direction, and LOD stats.
  * Uses the BitmapFont renderer for on-screen text.
- * 
+ *
  * Display modes (cycle with F3):
- *   OFF → BASIC → BASIC+CHUNKS → BASIC+CHUNKS+PROFILER → OFF
+ *   OFF → HELP → BASIC → BASIC+CHUNKS → BASIC+CHUNKS+PROFILER → OFF
  */
 public class DebugOverlay {
 
     /** Display mode enum */
     public enum DisplayMode {
         OFF,
+        HELP,           // F-key reference
         BASIC,
         BASIC_CHUNKS,
         BASIC_CHUNKS_PROFILER
@@ -34,9 +37,12 @@ public class DebugOverlay {
     private DisplayMode mode = DisplayMode.OFF;
     private final BitmapFont font;
 
-    // Base font scale (for 1080p reference resolution)
-    private static final float BASE_FONT_SCALE = 1.0f;
-    private static final float BASE_LINE_HEIGHT = 10.0f; // 8px char + 2px padding
+    /** Reference to renderer for visibility stats. */
+    private Renderer renderer;
+
+    // Base font scale (for 1080p reference resolution) - 1.7x larger
+    private static final float BASE_FONT_SCALE = 1.7f;
+    private static final float BASE_LINE_HEIGHT = 14.0f; // Scaled up from 10
     private static final float MARGIN_X = 6.0f;
     private static final float MARGIN_Y = 6.0f;
     private static final float PANEL_PADDING = 4.0f;
@@ -76,12 +82,18 @@ public class DebugOverlay {
         this.font = font;
     }
 
+    /** Set renderer reference for visibility stats. */
+    public void setRenderer(Renderer renderer) {
+        this.renderer = renderer;
+    }
+
     /**
-     * Cycle through display modes: OFF → BASIC → BASIC+CHUNKS → BASIC+CHUNKS+PROFILER → OFF
+     * Cycle through display modes: OFF → HELP → BASIC → BASIC+CHUNKS → BASIC+CHUNKS+PROFILER → OFF
      */
     public void toggle() {
         mode = switch (mode) {
-            case OFF -> DisplayMode.BASIC;
+            case OFF -> DisplayMode.HELP;
+            case HELP -> DisplayMode.BASIC;
             case BASIC -> DisplayMode.BASIC_CHUNKS;
             case BASIC_CHUNKS -> DisplayMode.BASIC_CHUNKS_PROFILER;
             case BASIC_CHUNKS_PROFILER -> DisplayMode.OFF;
@@ -145,6 +157,18 @@ public class DebugOverlay {
         // Update scale based on window size
         updateScale(screenH);
 
+        // Build lines based on display mode
+        List<String> lines = new ArrayList<>();
+
+        // === HELP MODE: Show F-key reference only ===
+        if (mode == DisplayMode.HELP) {
+            addControlsHelp(lines);
+            lines.add("");
+            lines.add("Press F3 again for debug info");
+            renderLines(lines, screenW, screenH);
+            return;
+        }
+
         Vector3f pos = player.getPosition();
         float yaw = player.getCamera().getYaw();
         float pitch = player.getCamera().getPitch();
@@ -156,9 +180,6 @@ public class DebugOverlay {
         String facing = getFacingDirection(yaw);
         float feetY = pos.y - Player.EYE_HEIGHT;
 
-        // Build lines based on display mode
-        List<String> lines = new ArrayList<>();
-
         // === BASIC INFO (always shown when visible) ===
         lines.add(String.format("FPS: %d", fps));
         lines.add(String.format("XYZ: %.1f / %.1f / %.1f", pos.x, pos.y, pos.z));
@@ -169,9 +190,9 @@ public class DebugOverlay {
             sprinting ? "Y" : "N"));
         lines.add(String.format("Mode: %s  HP: %.0f/%.0f",
             player.getGameMode(), player.getHealth(), player.getMaxHealth()));
-        
+
         // Phase 6: Show lighting mode
-        lines.add(String.format("Lighting: %s (F6 to toggle)",
+        lines.add(String.format("Lighting: %s",
             smoothLighting ? "Smooth" : "Sharp"));
 
         // === CHUNK INFO (BASIC_CHUNKS and BASIC_CHUNKS_PROFILER) ===
@@ -190,21 +211,35 @@ public class DebugOverlay {
             lines.add(String.format("Entities: %d items  %d mobs", itemEntityCount, mobCount));
         }
 
-        // === PROFILER (BASIC_CHUNKS_PROFILER only) ===
+        // === PROFILER + VISIBILITY (BASIC_CHUNKS_PROFILER only) ===
         if (mode == DisplayMode.BASIC_CHUNKS_PROFILER) {
+            // Visibility culling stats
+            if (renderer != null) {
+                lines.add(""); // Spacer
+                VisibilityGraph vg = renderer.getVisibilityGraph();
+                boolean visCulling = renderer.isVisibilityCullingEnabled();
+                lines.add(String.format("[Visibility] %s", visCulling ? "ON" : "OFF"));
+                if (vg != null) {
+                    lines.add(String.format("  Connected: %d subchunks  Candidates: %d chunks",
+                        vg.getLastConnectedCount(), vg.getLastCandidateChunks()));
+                    lines.add(String.format("  Connectivity culled: %d",
+                        renderer.getConnectivityCulled()));
+                }
+            }
+
             Profiler profiler = Profiler.getInstance();
             List<String> sections = profiler.getSections();
 
             if (!sections.isEmpty()) {
                 lines.add(""); // Spacer
-                
+
                 // Compact single-line summary of key metrics
                 double frameMs = profiler.getAverageMs("Frame");
                 double renderMs = profiler.getAverageMs("Render");
                 double uiMs = profiler.getAverageMs("UI");
                 double worldMs = profiler.getAverageMs("World");
                 double chunkMs = profiler.getAverageMs("ChunkMesh");
-                
+
                 lines.add(String.format("[Perf] frame=%.1f render=%.1f ui=%.1f chunk=%.1f world=%.1fms",
                     frameMs, renderMs, uiMs, chunkMs, worldMs));
 
@@ -216,11 +251,26 @@ public class DebugOverlay {
             }
         }
 
-        // Add scale/mode info at the bottom (for verification)
+        // Add controls at the bottom of every mode
         lines.add(""); // Spacer
-        lines.add(String.format("[F3 mode: %s | scale: %.2f | lines: %d]",
-            mode.name(), uiScale, lines.size()));
+        addControlsHelp(lines);
 
+        renderLines(lines, screenW, screenH);
+    }
+
+    /**
+     * Add F-key controls help to lines list.
+     */
+    private void addControlsHelp(List<String> lines) {
+        lines.add("=== DEBUG KEYS ===");
+        lines.add("F2=Screenshot  F3=Debug  F4=GameMode  F5=Difficulty");
+        lines.add("F6=Lighting  F7=DebugView  F9=Gamma  F10=Fog  F12=Wireframe");
+    }
+
+    /**
+     * Render a list of lines with background panel.
+     */
+    private void renderLines(List<String> lines, int screenW, int screenH) {
         // Clamp to max lines
         if (lines.size() > MAX_LINES) {
             lines = lines.subList(0, MAX_LINES);
@@ -255,7 +305,7 @@ public class DebugOverlay {
 
             // Determine text color (headers get yellow tint)
             float r = TEXT_R, g = TEXT_G, b = TEXT_B;
-            if (line.startsWith("[Perf]") || line.startsWith("[F3")) {
+            if (line.startsWith("[") || line.startsWith("===")) {
                 r = HEADER_R; g = HEADER_G; b = HEADER_B;
             }
 

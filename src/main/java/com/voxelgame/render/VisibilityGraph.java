@@ -23,14 +23,17 @@ import java.util.*;
  */
 public class VisibilityGraph {
 
-    /** Budget for BFS nodes per frame to keep CPU cost low. */
-    private static final int BFS_BUDGET_PER_FRAME = 100;
+    /** Budget for BFS nodes per frame. Higher = faster fill-in but more CPU. */
+    private static final int BFS_BUDGET_PER_FRAME = 500;
 
     /** Hysteresis: frames to keep a subchunk visible after BFS stops reaching it. */
     private static final int HYSTERESIS_FRAMES = 15;
 
     /** Grace shell: expand frontier by this many subchunks to prevent harsh cutoffs. */
     private static final int GRACE_SHELL_RADIUS = 2;
+
+    /** Minimum render distance (chunks) - always visible regardless of BFS state. */
+    private static final int MIN_VISIBLE_DISTANCE = 8;
 
     /** Current frame counter for hysteresis. */
     private long currentFrame = 0;
@@ -129,12 +132,25 @@ public class VisibilityGraph {
 
     /**
      * Get the set of candidate chunks that may be visible.
-     * Combines connectivity-reachable chunks with hysteresis.
+     * Combines connectivity-reachable chunks with hysteresis and minimum distance.
      *
      * @return Set of ChunkPos that should be considered for rendering
      */
     public Set<ChunkPos> getCandidateChunks() {
         Set<ChunkPos> candidates = new HashSet<>();
+
+        // Always include chunks within minimum visible distance (prevents popping when moving fast)
+        if (lastPlayerSubchunk != null) {
+            int pcx = lastPlayerSubchunk.cx();
+            int pcz = lastPlayerSubchunk.cz();
+            for (int dx = -MIN_VISIBLE_DISTANCE; dx <= MIN_VISIBLE_DISTANCE; dx++) {
+                for (int dz = -MIN_VISIBLE_DISTANCE; dz <= MIN_VISIBLE_DISTANCE; dz++) {
+                    if (dx * dx + dz * dz <= MIN_VISIBLE_DISTANCE * MIN_VISIBLE_DISTANCE) {
+                        candidates.add(new ChunkPos(pcx + dx, pcz + dz));
+                    }
+                }
+            }
+        }
 
         // Add all chunks containing connected subchunks
         for (SubchunkPos pos : connectedSet) {
