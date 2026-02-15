@@ -42,6 +42,16 @@ public class NaiveMesher implements Mesher {
     // Wider spread between faces gives stronger directional depth cues
     private static final float[] FACE_LIGHT = {1.0f, 0.45f, 0.7f, 0.7f, 0.8f, 0.6f};
 
+    // Minecraft-style brightness curve: level 0-15 -> brightness 0.0-1.0
+    // Formula: pow(0.8, 15 - level) gives exponential falloff like classic Minecraft.
+    // Level 15=1.0, 14=0.8, 10=0.328, 7=0.168, 3=0.055, 0=0.035
+    private static final float[] BRIGHTNESS_CURVE = new float[16];
+    static {
+        for (int i = 0; i <= 15; i++) {
+            BRIGHTNESS_CURVE[i] = (float) Math.pow(0.8, 15 - i);
+        }
+    }
+
     // Direction offsets for neighbor checking [dx, dy, dz]
     private static final int[][] FACE_NORMALS = {
         { 0,  1,  0}, // top
@@ -55,6 +65,20 @@ public class NaiveMesher implements Mesher {
     // AO levels: 0 occluders = 1.0, 1 = 0.50, 2 = 0.22, 3 = 0.08
     // Tuned for stronger terrain contrast (less flat-looking surfaces).
     private static final float[] AO_LEVELS = {1.0f, 0.50f, 0.22f, 0.08f};
+
+    // Smooth lighting toggle - when false, all vertices on a face get the same light (no AO)
+    private static volatile boolean smoothLighting = true;
+
+    /** Set smooth lighting mode. When false, faces are flat-shaded (no per-vertex AO). */
+    public static void setSmoothLighting(boolean enabled) {
+        smoothLighting = enabled;
+        System.out.println("[NaiveMesher] Smooth lighting set to: " + enabled);
+    }
+
+    /** Get current smooth lighting state. */
+    public static boolean isSmoothLighting() {
+        return smoothLighting;
+    }
 
     /**
      * For each face, the 4 vertices and their 3 AO neighbor offsets.
@@ -545,16 +569,23 @@ public class NaiveMesher implements Mesher {
                         float[] uv = atlas.getUV(texIdx);
                         float dirLight = FACE_LIGHT[face];
 
-                        // MINIMAL BASELINE: Simple AO + sky visibility, no RGB light, no indirect
+                        // Classic Minecraft lighting: per-vertex sky light + AO + brightness curve
                         int[][][] aoOffsets = AO_OFFSETS[face];
                         float[] vertLight = new float[4];
                         int[] aoValues = new int[4];
 
-                        // Sample sky visibility once for the face (not per-vertex)
-                        int sampleX = cx + x + FACE_NORMALS[face][0];
-                        int sampleY = y + FACE_NORMALS[face][1];
-                        int sampleZ = cz + z + FACE_NORMALS[face][2];
+                        // Sample sky light at the block adjacent to this face
+                        int faceNX = FACE_NORMALS[face][0];
+                        int faceNY = FACE_NORMALS[face][1];
+                        int faceNZ = FACE_NORMALS[face][2];
+                        int sampleX = cx + x + faceNX;
+                        int sampleY = y + faceNY;
+                        int sampleZ = cz + z + faceNZ;
+
+                        // Get raw sky light level (0-15) and apply Minecraft brightness curve
                         float skyVis = getSkyVisibilitySafe(world, sampleX, sampleY, sampleZ);
+                        int skyLevel = Math.clamp(Math.round(skyVis * 15.0f), 0, 15);
+                        float skyBrightness = BRIGHTNESS_CURVE[skyLevel];
 
                         for (int v = 0; v < 4; v++) {
                             boolean side1 = isOccluder(world, cx + x, y, cz + z, aoOffsets[v][0]);
@@ -564,10 +595,7 @@ public class NaiveMesher implements Mesher {
                             int ao = (side1 && side2) ? 3 : ((side1 ? 1 : 0) + (side2 ? 1 : 0) + (corner ? 1 : 0));
                             aoValues[v] = ao;
                             float aoFactor = AO_LEVELS[ao];
-
-                            // Simple combined light: faceLight * AO * skyVisibility
-                            // Add small ambient to prevent pure black in caves
-                            vertLight[v] = dirLight * aoFactor * Math.max(skyVis, 0.15f);
+                            vertLight[v] = dirLight * aoFactor * skyBrightness;
                         }
 
                         float[][] fv = FACE_VERTICES[face];

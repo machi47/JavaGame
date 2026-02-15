@@ -102,7 +102,8 @@ public class Renderer {
     /** Debug view mode (0=normal, 1=albedo, 2=lighting, 3=depth, 4=fog, 5=fog_dist, 6=fog_height, 7=fog_combined) */
     private int debugView = 0;
     private static final String[] DEBUG_VIEW_NAMES = {
-        "Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor", 
+        "Normal", "Albedo", "Lighting", "Linear Depth", "Fog Factor",
+        "Skylight Heatmap",
         "Fog Dist Only", "Fog Height Only", "Fog Combined"
     };
 
@@ -161,7 +162,7 @@ public class Renderer {
         this.gameTime = time;
     }
 
-    /** Phase 6: Toggle smooth lighting mode. */
+    /** Phase 6: Toggle smooth lighting mode. Instant - shader handles it via flat interpolation. */
     public void toggleSmoothLighting() {
         this.smoothLighting = !this.smoothLighting;
         System.out.println("[Renderer] Smooth lighting: " + (smoothLighting ? "ON" : "OFF"));
@@ -387,7 +388,10 @@ public class Renderer {
         
         // Fog mode toggle for visual audit
         blockShader.setInt("uFogMode", fogMode);
-        
+
+        // Wireframe mode - use bright white color
+        blockShader.setInt("uWireframe", wireframeMode ? 1 : 0);
+
         // Phase 5: Shadow map uniforms
         if (shadowRenderer != null && shadowRenderer.isShadowsEnabled()) {
             blockShader.setInt("uShadowsEnabled", 1);

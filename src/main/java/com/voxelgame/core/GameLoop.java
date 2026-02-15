@@ -1181,15 +1181,21 @@ public class GameLoop {
         }
         
         // Phase 6: Handle smooth lighting toggle (F6)
+        // Instant - shader switches between smooth (interpolated AO) and flat (provoking vertex)
         if (Input.isKeyPressed(GLFW_KEY_F6)) {
             renderer.toggleSmoothLighting();
         }
         
-        // Debug view toggle (F7) - cycles through render debug visualizations
+        // Debug view cycle (F7) - cycles through render visualizations
         if (Input.isKeyPressed(GLFW_KEY_F7)) {
             renderer.cycleDebugView();
         }
-        
+
+        // F8: Visibility culling toggle (experimental)
+        if (Input.isKeyPressed(GLFW_KEY_F8)) {
+            renderer.toggleVisibilityCulling();
+        }
+
         // Visual audit toggles (F9, F10)
         // F9: Gamma mode toggle (manual gamma vs sRGB framebuffer)
         if (Input.isKeyPressed(GLFW_KEY_F9)) {
@@ -1543,17 +1549,20 @@ public class GameLoop {
         int fbW = window.getFramebufferWidth();
         int fbH = window.getFramebufferHeight();
 
-        // Begin post-processing capture (render to FBO)
-        boolean usePostFX = postFX != null && postFX.isInitialized();
+        // Begin post-processing capture (render to FBO) - skip in wireframe mode
+        boolean usePostFX = postFX != null && postFX.isInitialized() && !renderer.isWireframeMode();
         if (usePostFX) {
             postFX.beginSceneCapture();
-            // Set sky clear color in the FBO too
             if (worldTime != null) {
                 float[] skyColor = worldTime.getSkyColor();
                 glClearColor(skyColor[0], skyColor[1], skyColor[2], 1.0f);
             }
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         } else {
+            // Wireframe mode: black background, or normal clear
+            if (renderer.isWireframeMode()) {
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+            }
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
 
@@ -1561,12 +1570,18 @@ public class GameLoop {
         glEnable(GL_DEPTH_TEST);
         glDepthMask(true);
         glDisable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        // Wireframe mode: disable culling so all edges visible, use GL_LINE
+        if (renderer.isWireframeMode()) {
+            glDisable(GL_CULL_FACE);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        } else {
+            glEnable(GL_CULL_FACE);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
 
-        // Render sky gradient first (at far depth)
+        // Render sky gradient first (at far depth) - skip in wireframe mode
         profiler.begin("Sky");
-        if (skyRenderer != null && skyRenderer.isInitialized()) {
+        if (!renderer.isWireframeMode() && skyRenderer != null && skyRenderer.isInitialized()) {
             skyRenderer.updateColors(worldTime);
             skyRenderer.render();
         }
@@ -1594,9 +1609,9 @@ public class GameLoop {
                 currentHit.x(), currentHit.y(), currentHit.z());
         }
 
-        // End PostFX capture and apply effects (SSAO + tone mapping)
+        // End PostFX capture and apply effects (SSAO + tone mapping) - skip in wireframe mode
         profiler.begin("PostFX");
-        if (usePostFX) {
+        if (usePostFX && !renderer.isWireframeMode()) {
             org.joml.Matrix4f projection = player.getCamera().getProjectionMatrix(fbW, fbH);
             org.joml.Matrix4f view = player.getCamera().getViewMatrix();
             postFX.endSceneAndApplyEffects(projection, view);
@@ -1609,6 +1624,7 @@ public class GameLoop {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDisable(GL_CULL_FACE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // Reset wireframe for UI
 
         profiler.begin("UI");
         hud.render(w, h, player);

@@ -11,7 +11,8 @@ uniform float uFogStart;
 uniform float uFogEnd;
 
 out vec2 vTexCoord;
-out float vLight;
+out float vLight;           // Smooth interpolation (default)
+flat out float vLightFlat;  // No interpolation (provoking vertex value)
 out float vFogFactor;
 out vec3 vViewPos;
 out vec3 vWorldPos;
@@ -21,6 +22,7 @@ void main() {
     gl_Position = uProjection * viewPos4;
     vTexCoord = aTexCoord;
     vLight = aLight;
+    vLightFlat = aLight;  // Same value, but GPU uses provoking vertex (no interpolation)
     vViewPos = viewPos4.xyz;
     vWorldPos = aPos;
 

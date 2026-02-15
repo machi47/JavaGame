@@ -106,14 +106,40 @@ public final class NeighborhoodSnapshot {
     }
     
     /**
-     * Get sky visibility at local coords (requires center chunk only).
+     * Get sky visibility at local coords, reading from the correct neighbor chunk.
      */
     public float getSkyVisibility(int lx, int y, int lz) {
-        if (y < 0 || y >= WorldConstants.WORLD_HEIGHT) return 1.0f;
-        if (lx < 0 || lx >= WorldConstants.CHUNK_SIZE || lz < 0 || lz >= WorldConstants.CHUNK_SIZE) {
-            return 1.0f; // Default for cross-chunk visibility
+        if (y < 0) return 0.0f;
+        if (y >= WorldConstants.WORLD_HEIGHT) return 1.0f;
+
+        // Handle diagonal corners - no chunk data available
+        boolean needsXNeighbor = (lx < 0 || lx >= WorldConstants.CHUNK_SIZE);
+        boolean needsZNeighbor = (lz < 0 || lz >= WorldConstants.CHUNK_SIZE);
+        if (needsXNeighbor && needsZNeighbor) {
+            return 0.0f; // No diagonal chunk data - dark (safe default)
         }
-        return center.getSkyVisibility(lx, y, lz);
+
+        Chunk chunk;
+        int adjX = lx, adjZ = lz;
+
+        if (lx < 0) {
+            chunk = nx;
+            adjX = lx + WorldConstants.CHUNK_SIZE;
+        } else if (lx >= WorldConstants.CHUNK_SIZE) {
+            chunk = px;
+            adjX = lx - WorldConstants.CHUNK_SIZE;
+        } else if (lz < 0) {
+            chunk = nz;
+            adjZ = lz + WorldConstants.CHUNK_SIZE;
+        } else if (lz >= WorldConstants.CHUNK_SIZE) {
+            chunk = pz;
+            adjZ = lz - WorldConstants.CHUNK_SIZE;
+        } else {
+            chunk = center;
+        }
+
+        if (chunk == null) return 0.0f; // Unloaded neighbor = dark (not bright!)
+        return chunk.getSkyVisibility(adjX, y, adjZ);
     }
     
     /**

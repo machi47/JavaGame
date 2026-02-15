@@ -63,7 +63,7 @@ public class World implements WorldAccess {
         int cx = Math.floorDiv(x, WorldConstants.CHUNK_SIZE);
         int cz = Math.floorDiv(z, WorldConstants.CHUNK_SIZE);
         Chunk chunk = getChunkInternal(cx, cz);
-        if (chunk == null) return 1.0f; // assume full sky visibility for unloaded chunks
+        if (chunk == null) return 0.0f; // unloaded chunks = dark (prevents bright seams at chunk borders)
         int lx = Math.floorMod(x, WorldConstants.CHUNK_SIZE);
         int lz = Math.floorMod(z, WorldConstants.CHUNK_SIZE);
         return chunk.getSkyVisibility(lx, y, lz);

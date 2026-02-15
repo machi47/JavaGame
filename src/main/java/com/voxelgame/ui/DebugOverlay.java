@@ -264,7 +264,7 @@ public class DebugOverlay {
     private void addControlsHelp(List<String> lines) {
         lines.add("=== DEBUG KEYS ===");
         lines.add("F2=Screenshot  F3=Debug  F4=GameMode  F5=Difficulty");
-        lines.add("F6=Lighting  F7=DebugView  F9=Gamma  F10=Fog  F12=Wireframe");
+        lines.add("F6=Lighting  F7=DebugView  F8=VisCull  F10=Fog  F12=Wire");
     }
 
     /**

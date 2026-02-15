@@ -309,7 +309,7 @@ public class ChunkManager {
                     if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
                         chunk.setCurrentLOD(newLOD);
                         if (chunk.isLightDirty()) {
-                            Lighting.computeInitialSkyVisibility(chunk);
+                            Lighting.computeInitialSkyVisibility(chunk, world);
                             Lighting.computeInitialBlockLight(chunk, world);
                         }
                         submitMeshJob(chunk, pos, false);
@@ -331,7 +331,7 @@ public class ChunkManager {
                 if (meshJobsSubmitted < maxMeshJobsPerUpdate) {
                     if (newLOD == LODLevel.LOD_0 && (chunk.getMesh() == null || chunk.getMesh().isEmpty())) {
                         if (chunk.isLightDirty()) {
-                            Lighting.computeInitialSkyVisibility(chunk);
+                            Lighting.computeInitialSkyVisibility(chunk, world);
                             Lighting.computeInitialBlockLight(chunk, world);
                         }
                         submitMeshJob(chunk, pos, false);
@@ -508,13 +508,17 @@ public class ChunkManager {
                         LODLevel level = chunk.getCurrentLOD();
 
                         if (level == LODLevel.LOD_0) {
-                            Lighting.computeInitialSkyVisibility(chunk);
+                            Lighting.computeInitialSkyVisibility(chunk, world);
                             Lighting.computeInitialBlockLight(chunk, world);
                             // Create probe grid for close chunks
                             if (probeManager != null) {
                                 probeManager.onChunkLoaded(chunk, world, currentTimeOfDay);
                             }
                             submitMeshJob(chunk, pos, true);
+
+                            // Mark adjacent chunks dirty so they remesh with this chunk's
+                            // lighting data (fixes dark spots at chunk borders)
+                            markNeighborsDirty(pos);
                         } else {
                             // For distant chunks, skip full lighting computation
                             submitLODMeshJob(chunk, pos, level);
@@ -524,6 +528,30 @@ public class ChunkManager {
                 } catch (Exception e) {
                     System.err.println("Chunk generation failed: " + e.getMessage());
                 }
+            }
+        }
+    }
+
+    /**
+     * Propagate light from a newly loaded chunk into its neighbors, then remesh them.
+     * Two-way: new chunk already seeded from neighbors during its own lighting pass.
+     * This handles the reverse: pushing the new chunk's light INTO existing neighbors.
+     */
+    private void markNeighborsDirty(ChunkPos pos) {
+        Chunk source = world.getChunk(pos.x(), pos.z());
+        if (source == null) return;
+
+        int[][] offsets = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] off : offsets) {
+            Chunk neighbor = world.getChunk(pos.x() + off[0], pos.z() + off[1]);
+            if (neighbor == null) continue;
+
+            // Propagate light from new chunk into neighbor (updates neighbor's sky light)
+            boolean lightChanged = Lighting.propagateEdgeLight(source, neighbor, world);
+
+            // Remesh neighbor if it has a mesh (either light changed or block data changed)
+            if (neighbor.getMesh() != null) {
+                neighbor.setDirty(true);
             }
         }
     }
